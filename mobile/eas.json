@@ -17,8 +17,5 @@
         "buildConfiguration": "Release"
       }
     }
-  },
-  "update": {
-    "channel": "main"
   }
 }
