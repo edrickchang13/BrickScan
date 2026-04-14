@@ -106,7 +106,7 @@ async def get_user_stats(
 
         # 5. Get scans this week
         from datetime import datetime, timedelta
-        week_ago = datetime.utcnow() - timedelta(days=7)
+        week_ago = datetime.now(timezone.utc) - timedelta(days=7)
         scans_week_result = await db.execute(
             select(func.count(Scan.id)).where(
                 and_(

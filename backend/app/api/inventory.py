@@ -19,7 +19,7 @@ from app.schemas.inventory import (
     UpdateInventoryRequest,
 )
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone
 import httpx
 import logging
 
@@ -172,27 +172,25 @@ async def get_inventory(
 ):
     user_id = current_user.get("sub")
 
+    # selectinload needs a relationship attribute, not a scalar FK column.
+    # Previously: selectinload(InventoryItem.user_id) — no-op / error. Load the
+    # actual part + color relationships to avoid the N+1 loop below.
     result = await db.execute(
         select(InventoryItem)
         .where(InventoryItem.user_id == user_id)
         .options(
-            selectinload(InventoryItem.user_id),
+            selectinload(InventoryItem.part),
+            selectinload(InventoryItem.color),
         )
     )
     items = result.scalars().all()
 
+    # `item.part` and `item.color` are eager-loaded via selectinload above;
+    # this loop makes zero additional queries. (Previously this issued 2*N queries.)
     response = []
     for item in items:
-        part_result = await db.execute(
-            select(Part).where(Part.id == item.part_id)
-        )
-        part = part_result.scalars().first()
-
-        color_result = await db.execute(
-            select(Color).where(Color.id == item.color_id)
-        )
-        color = color_result.scalars().first()
-
+        part = item.part
+        color = item.color
         if part and color:
             response.append(
                 InventoryItemSchema(
@@ -368,8 +366,14 @@ async def export_inventory(
 ):
     user_id = current_user.get("sub")
 
+    # Eager-load part + color to avoid 2*N extra queries during CSV export.
     result = await db.execute(
-        select(InventoryItem).where(InventoryItem.user_id == user_id)
+        select(InventoryItem)
+        .where(InventoryItem.user_id == user_id)
+        .options(
+            selectinload(InventoryItem.part),
+            selectinload(InventoryItem.color),
+        )
     )
     items = result.scalars().all()
 
@@ -378,16 +382,8 @@ async def export_inventory(
     writer.writerow(["Part Number", "Part Name", "Color", "Hex Code", "Quantity"])
 
     for item in items:
-        part_result = await db.execute(
-            select(Part).where(Part.id == item.part_id)
-        )
-        part = part_result.scalars().first()
-
-        color_result = await db.execute(
-            select(Color).where(Color.id == item.color_id)
-        )
-        color = color_result.scalars().first()
-
+        part = item.part
+        color = item.color
         if part and color:
             writer.writerow(
                 [
@@ -422,23 +418,21 @@ async def export_bricklink_xml(
         # For now, just return empty inventory for set exports
         pass
     else:
-        # Export entire inventory as a "have list"
+        # Export entire inventory as a "have list". Eager-load relationships
+        # to avoid issuing 2 queries per inventory item (N+1).
         result = await db.execute(
-            select(InventoryItem).where(InventoryItem.user_id == user_id)
+            select(InventoryItem)
+            .where(InventoryItem.user_id == user_id)
+            .options(
+                selectinload(InventoryItem.part),
+                selectinload(InventoryItem.color),
+            )
         )
         items = result.scalars().all()
 
         for item in items:
-            part_result = await db.execute(
-                select(Part).where(Part.id == item.part_id)
-            )
-            part = part_result.scalars().first()
-
-            color_result = await db.execute(
-                select(Color).where(Color.id == item.color_id)
-            )
-            color = color_result.scalars().first()
-
+            part = item.part
+            color = item.color
             if part and color:
                 # Map Rebrickable color ID to BrickLink color ID
                 rebrickable_color_id = color.rebrickable_id
@@ -533,8 +527,16 @@ async def get_inventory_value(
     user_id = current_user.get("sub")
     cache = get_cache()
 
+    # Eager-load part + color relationships — inventory value endpoint also calls
+    # an external BrickLink pricing API in the loop, so N+1 DB queries on top
+    # would dominate latency.
     result = await db.execute(
-        select(InventoryItem).where(InventoryItem.user_id == user_id)
+        select(InventoryItem)
+        .where(InventoryItem.user_id == user_id)
+        .options(
+            selectinload(InventoryItem.part),
+            selectinload(InventoryItem.color),
+        )
     )
     items = result.scalars().all()
 
@@ -546,16 +548,8 @@ async def get_inventory_value(
     parts_by_value = []   # {part_num, part_name, color_name, unit_price, qty, total}
 
     for item in items:
-        part_result = await db.execute(
-            select(Part).where(Part.id == item.part_id)
-        )
-        part = part_result.scalars().first()
-
-        color_result = await db.execute(
-            select(Color).where(Color.id == item.color_id)
-        )
-        color = color_result.scalars().first()
-
+        part = item.part
+        color = item.color
         if not part or not color:
             continue
 
@@ -622,5 +616,5 @@ async def get_inventory_value(
         breakdown_by_color=color_list,
         breakdown_by_theme=[],  # TODO: implement theme breakdown
         top_valuable_parts=top_parts,
-        cached_at=datetime.utcnow().isoformat() + "Z",
+        cached_at=datetime.now(timezone.utc).isoformat() + "Z",
     )

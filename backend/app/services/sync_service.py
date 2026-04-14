@@ -7,7 +7,7 @@ Runs periodically (weekly) to pick up new releases.
 import asyncio
 import httpx
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,7 +43,7 @@ async def sync_new_sets(
     - SyncError: If API call or database insert fails
     """
     if since_date is None:
-        since_date = datetime.utcnow() - timedelta(days=30)
+        since_date = datetime.now(timezone.utc) - timedelta(days=30)
 
     try:
         from app.models.lego_set import LegoSet

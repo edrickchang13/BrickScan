@@ -148,7 +148,7 @@ def save_scan_image(image_bytes: bytes, part_num: str, confidence: float) -> str
         part_safe = part_num.replace("/", "_").replace(" ", "_")
 
         # Create filename with timestamp
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S%f")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S%f")
         conf_str = f"{confidence:.2f}".replace(".", "")
         filename = f"{part_safe}_{conf_str}_{timestamp}.png"
         filepath = os.path.join(_IMAGES_DIR, filename)
