@@ -2,6 +2,9 @@ import Foundation
 import AVFoundation
 import ARKit
 import Photos
+import UIKit          // UIImage
+import Accelerate     // vImage_Buffer, vImage_CGImageFormat, vImagePixelCount
+import CoreGraphics
 
 @objc(DepthCaptureModule)
 class DepthCaptureModule: NSObject {
@@ -20,10 +23,11 @@ class DepthCaptureModule: NSObject {
     _ resolve: @escaping RCTPromiseResolveBlock,
     reject: @escaping RCTPromiseRejectBlock
   ) {
-    // Check if ARKit with depth is available
-    // LiDAR sensors are available on iPhone 12 Pro and later
+    // Check if ARKit with depth is available.
+    // `supportsFrameSemantics(_:)` is a class method — don't instantiate.
+    // For LiDAR RGBD we need `.sceneDepth` (iPhone 12 Pro / iPad Pro 2020+).
     let isAvailable = ARWorldTrackingConfiguration.isSupported &&
-                      ARWorldTrackingConfiguration().supportsFrameSemantics(.personSegmentationWithDepth)
+                      ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)
 
     resolve(isAvailable)
   }
@@ -97,8 +101,9 @@ class DepthCaptureModule: NSObject {
       }
       session.addOutput(videoOutput)
 
-      // Synchronize video and depth outputs
-      guard let connection = videoOutput.connection(with: .video) else {
+      // Synchronize video and depth outputs — we only need to assert the
+      // connection exists; the reference itself isn't used here.
+      guard videoOutput.connection(with: .video) != nil else {
         reject("DEPTH_ERROR", "Cannot setup video connection", nil)
         return
       }
@@ -186,9 +191,25 @@ class DepthCaptureModule: NSObject {
     defer { CVPixelBufferUnlockBaseAddress(depthBuffer, .readOnly) }
 
     // Create 16-bit depth PNG
-    let depthData = NSMutableData(capacity: width * height * 2)!
+    guard width > 0, height > 0 else {
+      throw NSError(
+        domain: "DepthCapture", code: -10,
+        userInfo: [NSLocalizedDescriptionKey: "Empty depth buffer dimensions"]
+      )
+    }
+    guard let depthData = NSMutableData(capacity: width * height * 2) else {
+      throw NSError(
+        domain: "DepthCapture", code: -11,
+        userInfo: [NSLocalizedDescriptionKey: "Failed to allocate depth buffer (out of memory?)"]
+      )
+    }
 
-    let baseAddress = CVPixelBufferGetBaseAddress(depthBuffer)!
+    guard let baseAddress = CVPixelBufferGetBaseAddress(depthBuffer) else {
+      throw NSError(
+        domain: "DepthCapture", code: -12,
+        userInfo: [NSLocalizedDescriptionKey: "Depth pixel buffer has no base address"]
+      )
+    }
     let bytesPerRow = CVPixelBufferGetBytesPerRow(depthBuffer)
 
     for y in 0..<height {
@@ -199,7 +220,7 @@ class DepthCaptureModule: NSObject {
         let row = rowBase.assumingMemoryBound(to: Float32.self)
         for x in 0..<width {
           let depthMM = min(max(row[x] * 1000.0, 0), 4000)
-          let uint16Value = UInt16(depthMM)
+          var uint16Value = UInt16(depthMM)
           depthData.append(&uint16Value, length: 2)
         }
       } else {
@@ -208,21 +229,31 @@ class DepthCaptureModule: NSObject {
       }
     }
 
-    // Create grayscale image and encode as PNG
-    var format = vImage_CGImageFormat(
+    // Create grayscale image and encode as PNG.
+    // vImage_CGImageFormat init is failable on iOS 13+ so we use `guard`.
+    // The type for vImage_Buffer width/height is `vImagePixelCount` (not `vUInt`).
+    let bitmapInfo = CGBitmapInfo(rawValue: CGImageByteOrderInfo.order16Little.rawValue)
+    guard var format = vImage_CGImageFormat(
       bitsPerComponent: 16,
       bitsPerPixel: 16,
       colorSpace: CGColorSpaceCreateDeviceGray(),
-      bitmapInfo: [.byteOrder16Little]
-    )
+      bitmapInfo: bitmapInfo
+    ) else {
+      throw NSError(domain: "DepthCapture", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to build vImage format"])
+    }
 
-    guard let cgImage = vImage_Buffer(
+    var buffer = vImage_Buffer(
       data: UnsafeMutableRawPointer(mutating: depthData.bytes),
-      height: vUInt(height),
-      width: vUInt(width),
+      height: vImagePixelCount(height),
+      width: vImagePixelCount(width),
       rowBytes: width * 2
-    ).createCGImage(format: &format) else {
-      throw NSError(domain: "DepthCapture", code: 3, userInfo: nil)
+    )
+    var vErr: vImage_Error = kvImageNoError
+    guard let cgImage = vImageCreateCGImageFromBuffer(
+      &buffer, &format, nil, nil, vImage_Flags(kvImageNoFlags), &vErr
+    )?.takeRetainedValue() else {
+      throw NSError(domain: "DepthCapture", code: 3,
+                    userInfo: [NSLocalizedDescriptionKey: "vImageCreateCGImageFromBuffer failed (\(vErr))"])
     }
 
     let uiImage = UIImage(cgImage: cgImage)
