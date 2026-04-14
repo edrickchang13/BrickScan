@@ -1,6 +1,6 @@
 import axios, { AxiosInstance, AxiosError, AxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
-import { NativeModules, Platform } from 'react-native';
+import { getApiBaseUrl } from '@/constants/config';
 import {
   Part,
   InventoryItem,
@@ -32,23 +32,6 @@ export interface PileResult {
 // ---------------------------------------------------------------------------
 // Dynamic API host detection
 // ---------------------------------------------------------------------------
-// In dev mode, derive the API host from Metro's bundle URL so we don't
-// need to hardcode USB/WiFi IPs.  Metro serves the bundle from the Mac,
-// and the backend runs on the same Mac at port 8000.
-function getApiBaseUrl(): string {
-  if (__DEV__) {
-    const scriptURL: string | undefined = NativeModules.SourceCode?.scriptURL;
-    if (scriptURL) {
-      try {
-        const host = new URL(scriptURL).hostname;
-        console.log('[BrickScan] API host derived from Metro:', host);
-        return `http://${host}:8000`;
-      } catch {}
-    }
-  }
-  return (globalThis as any).process?.env?.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
-}
-
 const API_BASE_URL = getApiBaseUrl();
 const TOKEN_KEY = 'brickscan_token';
 

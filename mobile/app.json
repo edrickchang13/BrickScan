@@ -12,7 +12,7 @@
     },
     "ios": {
       "bundleIdentifier": "com.edrickchang.brickscan",
-      "supportsTabletMode": false,
+      "supportsTablet": false,
       "infoPlist": {
         "NSCameraUsageDescription": "We need camera access to scan LEGO pieces",
         "NSPhotoLibraryUsageDescription": "We need access to your photos to scan LEGO pieces"
@@ -35,7 +35,8 @@
           "cameraPermission": "Allow BrickScan to access your camera"
         }
       ],
-      "expo-updates"
+      "expo-updates",
+      "expo-font"
     ],
     "updates": {
       "enabled": true,

@@ -6,6 +6,7 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "channel": "development",
       "ios": {
         "simulator": false,
         "buildConfiguration": "Debug"
@@ -13,6 +14,14 @@
     },
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
+      "ios": {
+        "buildConfiguration": "Release"
+      }
+    },
+    "production": {
+      "distribution": "store",
+      "channel": "main",
       "ios": {
         "buildConfiguration": "Release"
       }

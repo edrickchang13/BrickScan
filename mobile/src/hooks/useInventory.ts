@@ -5,7 +5,7 @@ import {
   MutationOptions,
 } from '@tanstack/react-query';
 import { Share } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Config } from '../constants/config';
 import { inventoryToCsv } from '../utils/csvUtils';
 
@@ -104,7 +104,11 @@ async function deleteItem(id: string): Promise<void> {
 async function exportInventoryAsCSV(items: InventoryItem[]): Promise<void> {
   const csvContent = inventoryToCsv(items);
   const filename = `inventory-${new Date().toISOString().split('T')[0]}.csv`;
-  const filePath = `${FileSystem.DocumentDirectoryPath}/${filename}`;
+  const documentDirectory = FileSystem.documentDirectory;
+  if (!documentDirectory) {
+    throw new Error('Document directory is unavailable on this device');
+  }
+  const filePath = `${documentDirectory}${filename}`;
 
   await FileSystem.writeAsStringAsync(filePath, csvContent);
 

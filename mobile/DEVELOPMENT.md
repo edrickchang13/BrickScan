@@ -86,9 +86,9 @@ This is why hardcoding `en6` or a specific `169.254.x.x` IP always breaks eventu
 
 **Root cause:** `expo-camera`'s `PreviewView.swift` called `fatalError()` when `AVCaptureVideoPreviewLayer` wasn't the layer class, which can happen in React Native's UIView lifecycle.
 
-**Fix applied:** `PreviewView.swift` patched via `patch-package` to return a detached fallback layer instead of crashing. Patch file: `patches/expo-camera+15.0.16.patch`.
+**Historical fix:** SDK 51 previously used a local `patch-package` patch for `expo-camera` to avoid this crash.
 
-**This patch is applied automatically** on `npm install` via the `postinstall` script.
+**Current state:** After upgrading to Expo SDK 55, that legacy patch was removed because it no longer matches the installed `expo-camera` version.
 
 ---
 
@@ -216,7 +216,7 @@ lsof -ti tcp:8081 | xargs kill 2>/dev/null || true
 cd mobile/ios
 xcodebuild clean -workspace BrickScan.xcworkspace -scheme BrickScan
 
-# Wipe node_modules and reinstall (re-applies patches)
+# Wipe node_modules and reinstall dependencies
 cd ..
 rm -rf node_modules
 npm install
@@ -232,7 +232,6 @@ npm install
 |------|---------|
 | `ios/BrickScan/AppDelegate.mm` | Metro host resolution at runtime using `getifaddrs` |
 | `start-dev.sh` | Metro launcher with IP detection and keepalive |
-| `patches/expo-camera+15.0.16.patch` | Prevents camera crash (`PreviewView.swift` fatalError) |
 | `ios/detect_metro_host.sh` | Legacy script, no longer called by Xcode (can be deleted) |
 | `ios/BrickScan/MetroHost.h` | Legacy header, no longer generated or used (can be deleted) |
 

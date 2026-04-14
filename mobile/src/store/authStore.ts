@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiClient } from '@/services/api';
 import { User, AuthState } from '@/types';
 
@@ -123,12 +124,12 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
   },
 
   loadOnboardingState: async () => {
-    const val = await (await import('@react-native-async-storage/async-storage')).default.getItem('brickscan_onboarded');
+    const val = await AsyncStorage.getItem('brickscan_onboarded');
     set({ hasOnboarded: val === 'true' });
   },
 
   completeOnboarding: async () => {
-    await (await import('@react-native-async-storage/async-storage')).default.setItem('brickscan_onboarded', 'true');
+    await AsyncStorage.setItem('brickscan_onboarded', 'true');
     set({ hasOnboarded: true });
   },
 
