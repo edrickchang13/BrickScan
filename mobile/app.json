@@ -40,16 +40,21 @@
     "updates": {
       "enabled": true,
       "checkAutomatically": "ON_LOAD",
-      "fallbackToCacheTimeout": 0
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/da87a4a6-d3a6-4bc6-846b-4f40c2ad1d69"
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.0",
     "extra": {
       "eas": {
         "projectId": "da87a4a6-d3a6-4bc6-846b-4f40c2ad1d69"
       }
     },
-    "owner": "omaxxs-organization"
+    "owner": "omaxxs-organization",
+    "android": {
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    }
   }
 }
