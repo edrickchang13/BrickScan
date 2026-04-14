@@ -44,6 +44,12 @@
     },
     "runtimeVersion": {
       "policy": "appVersion"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "da87a4a6-d3a6-4bc6-846b-4f40c2ad1d69"
+      }
+    },
+    "owner": "omaxxs-organization"
   }
 }
