@@ -54,6 +54,11 @@ class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
 
   override func bundleURL() -> URL? {
 #if DEBUG
+    // Auto-discover Metro host: scans all local interfaces (WiFi, USB link-local)
+    // concurrently and picks whichever one answers at /status first. Falls back
+    // to saved jsLocation, then localhost. See MetroHostResolver.swift.
+    let host = MetroHostResolver.resolve()
+    RCTBundleURLProvider.sharedSettings().jsLocation = host
     return RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: ".expo/.virtual-metro-entry")
 #else
     return Bundle.main.url(forResource: "main", withExtension: "jsbundle")
