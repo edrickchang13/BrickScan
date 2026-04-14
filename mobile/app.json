@@ -11,7 +11,7 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "bundleIdentifier": "com.brickscan.app",
+      "bundleIdentifier": "com.edrickchang.brickscan",
       "supportsTabletMode": false,
       "infoPlist": {
         "NSCameraUsageDescription": "We need camera access to scan LEGO pieces",
@@ -34,7 +34,16 @@
           "photosPermission": "Allow BrickScan to access your photos",
           "cameraPermission": "Allow BrickScan to access your camera"
         }
-      ]
-    ]
+      ],
+      "expo-updates"
+    ],
+    "updates": {
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    }
   }
 }
