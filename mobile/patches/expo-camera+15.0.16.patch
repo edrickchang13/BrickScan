@@ -2,19 +2,20 @@ diff --git a/node_modules/expo-camera/ios/Current/PreviewView.swift b/node_modul
 index bbb2618..c7f3a21 100644
 --- a/node_modules/expo-camera/ios/Current/PreviewView.swift
 +++ b/node_modules/expo-camera/ios/Current/PreviewView.swift
-@@ -3,10 +3,19 @@ import AVFoundation
- 
+@@ -3,10 +3,22 @@ import AVFoundation
+
  class PreviewView: UIView {
    var videoPreviewLayer: AVCaptureVideoPreviewLayer {
 -    guard let layer = layer as? AVCaptureVideoPreviewLayer else {
 -      fatalError("Expected `AVCaptureVideoPreviewLayer` type for layer. Check PreviewView.layerClass implementation.")
+-    }
+-    return layer
 +    // UIView.layer must be accessed on the main thread.
 +    // ExpoCamera calls this from captureSessionQueue (background thread),
 +    // so we dispatch synchronously to main when needed.
 +    if !Thread.isMainThread {
 +      return DispatchQueue.main.sync { self.videoPreviewLayer }
-     }
--    return layer
++    }
 +    // In React Native environments the layer hierarchy can be initialized
 +    // before layerClass takes effect. Return a fallback instead of crashing.
 +    if let layer = layer as? AVCaptureVideoPreviewLayer {
@@ -26,5 +27,5 @@ index bbb2618..c7f3a21 100644
 +    fallback.videoGravity = .resizeAspectFill
 +    return fallback
    }
- 
+
    var session: AVCaptureSession? {
