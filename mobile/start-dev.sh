@@ -1,12 +1,16 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────────────────────
-# start-dev.sh  —  BrickScan development server launcher
+# start-dev.sh  —  BrickScan development server launcher (v2, IP-watching)
 #
 # Solves the recurring "Could not connect to development server" error by:
-#   1. Auto-detecting the current USB link-local IP (any interface, not just en6)
-#   2. Setting REACT_NATIVE_PACKAGER_HOSTNAME so Metro advertises the right IP
-#   3. Keeping Metro alive — auto-restarts if it crashes, re-detects IP each time
-#   4. Printing the connection URL for easy reference
+#   1. Auto-detecting the current USB link-local IP on startup
+#   2. Exporting REACT_NATIVE_PACKAGER_HOSTNAME so Metro advertises that IP in
+#      every manifest it serves
+#   3. BACKGROUND WATCHER: monitors IP every 2 s while Metro is running. If the
+#      USB cable is unplugged/replugged and the IP changes, the watcher kills
+#      Metro so the outer loop respawns it with the new IP — the phone can
+#      then reconnect without any manual URL entry.
+#   4. Keeping Metro alive — auto-restarts if it crashes
 #
 # Detection priority:
 #   1. Any interface with a 169.254.x.x link-local IP  (USB tether — most reliable)
@@ -19,24 +23,32 @@
 # whenever the OS picks a different slot.
 #
 # Usage:
-#   ./start-dev.sh              # auto-detect IP
-#   ./start-dev.sh 192.168.1.5  # force a specific IP
+#   ./start-dev.sh              # auto-detect IP, watch for changes
+#   ./start-dev.sh 192.168.1.5  # force a specific IP (disables watcher)
+#   ./start-dev.sh --no-watch   # auto-detect but disable the IP watcher
 #   npm run dev                  # same as ./start-dev.sh (via package.json)
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORT="${METRO_PORT:-8081}"
-FORCE_IP="${1:-}"
+
+# Argument parsing
+FORCE_IP=""
+WATCH_IP=1
+for arg in "$@"; do
+  case "$arg" in
+    --no-watch) WATCH_IP=0 ;;
+    -*)         echo "Unknown flag: $arg"; exit 2 ;;
+    *)          FORCE_IP="$arg" ;;
+  esac
+done
 
 # ── IP detection ─────────────────────────────────────────────────────────────
-# Returns the best IP for Metro to bind/advertise.
 detect_ip() {
   local ip=""
 
   # Priority 1: USB link-local (169.254.x.x) on ANY interface.
-  # The OS assigns this dynamically on each cable plug — the interface name
-  # (en1/en4/en6/en8) changes, but the 169.254 subnet is always the marker.
   ip=$(ifconfig 2>/dev/null \
     | grep "inet 169\.254\." \
     | head -1 \
@@ -95,14 +107,67 @@ print_banner() {
   echo "  BrickScan Metro"
   echo "  Host : $host${iface:+ (via $iface)}"
   echo "  URL  : exp://$host:$PORT"
+  if [[ "$WATCH_IP" == "1" && -z "$FORCE_IP" ]]; then
+    echo "  Watch: active — will auto-restart if USB IP changes"
+  fi
   echo ""
-  echo "  If the app can't connect:"
-  echo "    1. Re-plug the USB cable, then run: npm run dev"
-  echo "    2. Or on the iPhone: Settings → Developer → Enable UI Automation"
-  echo "       then rebuild from Xcode"
+  echo "  Phone can't connect?"
+  echo "    • Re-plug USB → watcher detects IP change → Metro auto-restarts"
+  echo "    • Or point phone at: exp://\$(scutil --get LocalHostName).local:$PORT"
+  echo "      (mDNS hostname — works across IP changes without restart)"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo ""
 }
+
+# ── IP-change watcher ────────────────────────────────────────────────────────
+# Runs in background while Metro is up. Polls the current IP every 2 s;
+# if it changes, sends SIGTERM to Metro so the outer loop respawns it with
+# REACT_NATIVE_PACKAGER_HOSTNAME set to the new IP.
+watch_for_ip_change() {
+  local metro_pid="$1"
+  local baseline_ip="$2"
+  local tick=0
+
+  while kill -0 "$metro_pid" 2>/dev/null; do
+    sleep 2
+    tick=$((tick + 1))
+
+    local current
+    current="$(detect_ip)"
+
+    # Don't trigger on localhost fallback (happens briefly during cable reconnect)
+    [[ "$current" == "localhost" ]] && continue
+    [[ "$current" == "$baseline_ip" ]] && continue
+
+    echo ""
+    echo "⚡ [watcher] IP changed: $baseline_ip → $current"
+    echo "⚡ [watcher] Restarting Metro so new IP is in manifests..."
+
+    # Kill entire Metro process group so we don't leave zombies
+    kill -TERM "$metro_pid" 2>/dev/null || true
+    # Graceful exit wait — Metro may need a moment
+    for _ in 1 2 3 4 5; do
+      kill -0 "$metro_pid" 2>/dev/null || break
+      sleep 1
+    done
+    # Force kill if still alive
+    kill -KILL "$metro_pid" 2>/dev/null || true
+    return 0
+  done
+}
+
+# ── Cleanup on script exit ───────────────────────────────────────────────────
+cleanup() {
+  # Kill background watcher if it's still around
+  if [[ -n "${WATCHER_PID:-}" ]]; then
+    kill "$WATCHER_PID" 2>/dev/null || true
+  fi
+  # Kill Metro if we have a PID for it
+  if [[ -n "${METRO_PID:-}" ]]; then
+    kill "$METRO_PID" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT INT TERM
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 cd "$SCRIPT_DIR"
@@ -110,6 +175,7 @@ cd "$SCRIPT_DIR"
 if [[ -n "$FORCE_IP" ]]; then
   HOST="$FORCE_IP"
   echo "ℹ  Using forced IP: $HOST"
+  WATCH_IP=0  # no point watching when you've asked for a fixed IP
 else
   HOST="$(detect_ip)"
   echo "ℹ  Detected host IP: $HOST"
@@ -118,31 +184,51 @@ fi
 kill_stale_metro
 print_banner "$HOST"
 
-# ── Keepalive loop: restart Metro on crash, re-detect IP each time ───────────
+# ── Keepalive loop ───────────────────────────────────────────────────────────
 RESTART_COUNT=0
-MAX_RESTARTS=20   # generous; each restart re-detects the current USB IP
+MAX_RESTARTS=20
 
 while true; do
   # Re-detect before every start — the cable may have been reconnected
   NEW_HOST="$(detect_ip)"
   if [[ "$NEW_HOST" != "$HOST" && "$NEW_HOST" != "localhost" ]]; then
-    echo "⚡ IP changed: $HOST → $NEW_HOST  (cable reconnected?)"
+    echo "⚡ IP updated: $HOST → $NEW_HOST"
     HOST="$NEW_HOST"
     print_banner "$HOST"
   fi
 
   export REACT_NATIVE_PACKAGER_HOSTNAME="$HOST"
-  npx expo start --port "$PORT" || true
+
+  # Start Metro in the background so we can run the watcher alongside it
+  npx expo start --port "$PORT" &
+  METRO_PID=$!
+
+  # Start the IP-change watcher (unless disabled)
+  WATCHER_PID=""
+  if [[ "$WATCH_IP" == "1" ]]; then
+    watch_for_ip_change "$METRO_PID" "$HOST" &
+    WATCHER_PID=$!
+  fi
+
+  # Wait for Metro to exit (killed by watcher, crash, or user Ctrl+C)
+  wait "$METRO_PID" 2>/dev/null || true
+  METRO_EXIT=$?
+
+  # Clean up watcher
+  if [[ -n "$WATCHER_PID" ]]; then
+    kill "$WATCHER_PID" 2>/dev/null || true
+    wait "$WATCHER_PID" 2>/dev/null || true
+    WATCHER_PID=""
+  fi
+  METRO_PID=""
 
   RESTART_COUNT=$((RESTART_COUNT + 1))
   if [[ $RESTART_COUNT -ge $MAX_RESTARTS ]]; then
-    echo "❌ Metro crashed $MAX_RESTARTS times consecutively. Giving up."
+    echo "❌ Metro restarted $MAX_RESTARTS times. Giving up."
     exit 1
   fi
 
-  # Re-detect IP immediately after exit (before sleeping)
-  HOST="$(detect_ip)"
   echo ""
-  echo "🔄 Metro exited (restart $RESTART_COUNT/$MAX_RESTARTS). Restarting in 3 s with IP: $HOST..."
-  sleep 3
+  echo "🔄 Metro exited (restart $RESTART_COUNT/$MAX_RESTARTS). Respawning in 2 s..."
+  sleep 2
 done

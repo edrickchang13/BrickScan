@@ -232,15 +232,13 @@ export const ScanScreen: React.FC<Props> = ({ navigation }) => {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      // Attempt to capture depth if available
-      let depthFilePath: string | undefined;
-      if (isDepthCapable) {
-        setLoadingStatus('Capturing depth…');
-        const rgbdResult = await captureRGBD();
-        if (rgbdResult) {
-          depthFilePath = rgbdResult.depthPath;
-        }
-      }
+      // DepthCapture is disabled: expo-camera's live viewfinder holds the camera's
+      // AVCaptureSession, and iOS does not allow a second concurrent session on
+      // the same camera, so captureRGBD() always times out. Re-enable when we
+      // (a) start consuming depth as a 4th channel in the ML pipeline, and
+      // (b) switch to AVCaptureMultiCamSession or pause the viewfinder before
+      // capture. See project plan Phase D.
+      const depthFilePath: string | undefined = undefined;
 
       setLoadingStatus('Identifying piece…');
       const result = await apiClient.scanImage(base64, depthFilePath);

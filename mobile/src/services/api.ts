@@ -56,9 +56,22 @@ async function withRetry<T>(
         status === 504 ||
         err.code === 'ECONNABORTED' || // timeout
         err.code === 'ERR_NETWORK';
-      if (!isRetryable || attempt === retries) throw err;
+      // DIAGNOSTIC: log exact reason for retry — helps debug
+      // "scan hangs forever" vs "backend unreachable" vs "404".
+      const errDetail =
+        err?.code ??
+        err?.response?.status ??
+        err?.message ??
+        'unknown';
+      const errMsg = err?.message ?? String(err);
+      const url = err?.config?.url ?? '(no url)';
+      const method = err?.config?.method ?? '(no method)';
+      if (!isRetryable || attempt === retries) {
+        console.error(`[BrickScan] Giving up after ${attempt + 1} attempts — ${method.toUpperCase()} ${url} → ${errDetail}: ${errMsg}`);
+        throw err;
+      }
       const delay = baseDelay * Math.pow(2, attempt);
-      console.log(`[BrickScan] Retry ${attempt + 1}/${retries} in ${delay}ms…`);
+      console.log(`[BrickScan] Retry ${attempt + 1}/${retries} in ${delay}ms (${method.toUpperCase()} ${url} failed: ${errDetail})`);
       await new Promise<void>((r) => setTimeout(r, delay));
     }
   }
