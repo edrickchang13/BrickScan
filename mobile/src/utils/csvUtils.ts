@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Share } from 'react-native';
 
 export interface InventoryItem {
@@ -88,7 +88,11 @@ export async function downloadAndShareCsv(
   try {
     const timestamp = new Date().toISOString().split('T')[0];
     const fullFilename = `${filename}-${timestamp}.csv`;
-    const filePath = `${FileSystem.DocumentDirectoryPath}/${fullFilename}`;
+    const documentDirectory = FileSystem.documentDirectory;
+    if (!documentDirectory) {
+      throw new Error('Document directory is unavailable on this device');
+    }
+    const filePath = `${documentDirectory}${fullFilename}`;
 
     await FileSystem.writeAsStringAsync(filePath, csvContent, {
       encoding: FileSystem.EncodingType.UTF8,

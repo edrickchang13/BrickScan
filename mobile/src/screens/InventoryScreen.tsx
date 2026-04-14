@@ -130,7 +130,7 @@ export const InventoryScreen: React.FC = () => {
           <Text style={styles.sortBtnText}>{sortLabel[sortMode]}</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.filterBtn, selectedColor && styles.filterBtnActive]}
+          style={[styles.filterBtn, !!selectedColor && styles.filterBtnActive]}
           onPress={() => setShowFilterModal(true)}
           activeOpacity={0.7}
         >

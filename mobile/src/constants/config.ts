@@ -1,6 +1,32 @@
+import { NativeModules } from 'react-native';
+
+const DEFAULT_API_BASE_URL = 'http://localhost:8000';
+
+type RuntimeEnv = {
+  process?: {
+    env?: Record<string, string | undefined>;
+  };
+};
+
+export function getApiBaseUrl(): string {
+  if (__DEV__) {
+    const scriptURL = NativeModules.SourceCode?.scriptURL as string | undefined;
+    if (scriptURL) {
+      try {
+        const host = new URL(scriptURL).hostname;
+        return `http://${host}:8000`;
+      } catch {
+        // Fall through to env/default handling below.
+      }
+    }
+  }
+
+  return (globalThis as RuntimeEnv).process?.env?.EXPO_PUBLIC_API_URL || DEFAULT_API_BASE_URL;
+}
+
 export const Config = {
   // API Configuration
-  API_BASE_URL: process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000',
+  API_BASE_URL: getApiBaseUrl(),
   REBRICKABLE_IMAGE_CDN: 'https://cdn.rebrickable.com/media/parts/photos/0',
   BRICKLINK_BASE_URL: 'https://www.bricklink.com',
 

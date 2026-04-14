@@ -28,11 +28,10 @@ self.define_singleton_method(use_autolinking_method_symbol) do |*args|
   end
 end
 
-platform :ios, podfile_properties['ios.deploymentTarget'] || '13.4'
+platform :ios, podfile_properties['ios.deploymentTarget'] || '15.1'
 install! 'cocoapods',
   :deterministic_uuids => false
 
-inhibit_all_warnings!
 prepare_react_native_project!
 
 target 'BrickScan' do
@@ -57,6 +56,21 @@ target 'BrickScan' do
       :mac_catalyst_enabled => false,
       :ccache_enabled => podfile_properties['apple.ccacheEnabled'] == 'true',
     )
+
+    # Xcode 26: fmt 11 can fail consteval parsing in format.cc during pod compilation.
+    # Restrict this workaround to fmt only to avoid changing React Native defaults.
+    installer.pods_project.targets.each do |target|
+      next unless target.name == 'fmt'
+      target.build_configurations.each do |config|
+        config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'gnu++17'
+        defs = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] || ['$(inherited)']
+        defs = [defs] if defs.is_a?(String)
+        unless defs.include?('FMT_USE_CONSTEVAL=0')
+          defs << 'FMT_USE_CONSTEVAL=0'
+        end
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = defs
+      end
+    end
 
     # This is necessary for Xcode 14, because it signs resource bundles by default
     # when building for devices.

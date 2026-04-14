@@ -3,34 +3,637 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 54;
+	objectVersion = 46;
 	objects = {
 
 /* Begin PBXBuildFile section */
-		02FF258D98CA47B29E5B7E21 /* noop-file.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95BD82EAAA9443FFB41FB550 /* noop-file.swift */; };
-		13B07FBC1A68108700A75B9A /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB01A68108700A75B9A /* AppDelegate.mm */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
-		13B07FC11A68108700A75B9A /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB71A68108700A75B9A /* main.m */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
 		96905EF65AED1B983A6B3ABC /* libPods-BrickScan.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 58EEBF8E8E6FB1BC6CAF49B5 /* libPods-BrickScan.a */; };
 		B18059E884C0ABDD17F3DC3D /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC715A2D49A985799AEE119 /* ExpoModulesProvider.swift */; };
+		B512435B5DD810FF15E0A958 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 3F443B8F89D8B529CC6C2A9D /* PrivacyInfo.xcprivacy */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
-		EDD1EF71A31E40B4937C484A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 057ABCB51370272454DC63D8 /* PrivacyInfo.xcprivacy */; };
+		D64893A54DD4459D8358E2F8 /* noop-file.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86742196E8FD4DF7AD773CFF /* noop-file.swift */; };
+		DCFB97D9CBE06348F59AF434 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 557856F79269B1B51DB8FB5F /* AppDelegate.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		073241BDBC29F2D279AB249C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 3CA7A9404CCDD6BA22C97F8348CE3209;
+			remoteInfo = Subproject;
+		};
+		07F5F014CC687183BA7D312E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 33EEBF1D210254B5452CE560F81C9D38;
+			remoteInfo = Subproject;
+		};
+		0C71FEF5CEEA0E4EA5E103D4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 269BE773C9482484B70949A40F4EA525;
+			remoteInfo = Subproject;
+		};
+		184617395DBFED8D5B0E3560 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 4F3E9C98444FA55E416B857143C48013;
+			remoteInfo = Subproject;
+		};
+		18C22B3D9F23E37DC72D09DD /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 50B5347C9A6E93B7D4CFC3673BA6FB7E;
+			remoteInfo = Subproject;
+		};
+		1E84CCCD8EFD5DA29F34CB02 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = EEDBF403E8E0B3885E65C2741B536BC5;
+			remoteInfo = Subproject;
+		};
+		1F067064ADD98BC906BC4644 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 75305EBA801F441B45E192AFE2CB7486;
+			remoteInfo = Subproject;
+		};
+		24C54408427A123407066D82 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = F4BDA69E3BCB0166D49FB679ABADCA00;
+			remoteInfo = Subproject;
+		};
+		253F232BEB044DAFC0B2EFE4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 5737DDB4BC95AD399B3206838AB97095;
+			remoteInfo = Subproject;
+		};
+		2A0207CCC4373871393DDFFA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = F958876A082BF810B342435CE3FB5AF6;
+			remoteInfo = Subproject;
+		};
+		2E8E32948F213A9D1B3C0F4C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = CEA45A2349847B8CEAC9ABF565A04BD0;
+			remoteInfo = Subproject;
+		};
+		35D08A9A2745F59E894518DF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = A67E85E5F06FDA406D3A1B378BDF0C5C;
+			remoteInfo = Subproject;
+		};
+		3700F28A595F0A20AB59B818 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = FCF61D9B2B75054A9A3185DDC609B7FF;
+			remoteInfo = Subproject;
+		};
+		3EE348638BE5C2FC600F20C1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 65D0A19C165FA1126B1360680FE6DB12;
+			remoteInfo = Subproject;
+		};
+		3F75A901161D08F2AC4C35DD /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = C02EAF482D8B4DE45E3A58A25AE1FA91;
+			remoteInfo = Subproject;
+		};
+		41170DA141AA25B877D6BB8B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 5AA54A19E2135E09B9C8C0767385FD3A;
+			remoteInfo = Subproject;
+		};
+		4A3C5D5292AC876CA37B84AF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 8F65F9361F2069CF9E9D751272968DE4;
+			remoteInfo = Subproject;
+		};
+		4A4181FE081ABA7E9EBBAC25 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 1936453FF2A7E3A13063C4917C4D5598;
+			remoteInfo = Subproject;
+		};
+		4AC4BC8392AA97FCCB08AECB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = D097506274EC2BE06FC8A4B80E7DCD87;
+			remoteInfo = Subproject;
+		};
+		523A8AA1A21D99A0504D9E68 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 1;
+			remoteGlobalIDString = 63E9C76A3A13EC68426BAD9AA5E45CA9;
+			remoteInfo = "Pods-BrickScan";
+		};
+		535E2E1EC48C018516669DBA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 6771D231F4C8C5976470A369C474B32E;
+			remoteInfo = Subproject;
+		};
+		53B202DA40E585B687AA18D9 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 8373770623C36DC1B0469DD50C6F763C;
+			remoteInfo = Subproject;
+		};
+		53FDEAF90CA1D86325B87639 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 7894B46E6C7FA2545BF0AD11EFC6F44E;
+			remoteInfo = Subproject;
+		};
+		5A2A461F21762DF65CEF222E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = C941106D9D54AE237C5110F5638389AC;
+			remoteInfo = Subproject;
+		};
+		5A78BB2E2A839AECBEC4E030 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 60D5A56E763D6E7C4FBE797565062EEA;
+			remoteInfo = Subproject;
+		};
+		5C23AAB02851D654E260D9AE /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = D5C775614AC76D44CECB6BE08B022F1F;
+			remoteInfo = Subproject;
+		};
+		5CE1E1A247548BFBBB551FFE /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = D22EED118A762A7D7BC88A4ADBB7026E;
+			remoteInfo = Subproject;
+		};
+		5D309FB082D0B18329288D49 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 37592FDAD45752511010F4B06AC57355;
+			remoteInfo = Subproject;
+		};
+		6201065F7000E491432A35EC /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = FE7B9294FF05AAFD1653E2104E10844A;
+			remoteInfo = Subproject;
+		};
+		623B4AD1F42508730811EF0C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 5868279839278475B7AAE3A5535A508C;
+			remoteInfo = Subproject;
+		};
+		680A2D184B76CE8777E67473 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = F8E0CC88BCE27B513814FD8E352EEEA5;
+			remoteInfo = Subproject;
+		};
+		69187EFD9C8B90C6B4168CEB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 57F2ADB04BA09E01A5156966297FA556;
+			remoteInfo = Subproject;
+		};
+		6F69B1D7D9AF7D92AFE902CD /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = F71EBF73F354B475D465FF6DE9A66707;
+			remoteInfo = Subproject;
+		};
+		74CB35D6C016BAF4AFED8DAB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 6FFB7B2992BB53405E6B771A5BA1E97D;
+			remoteInfo = Subproject;
+		};
+		78D0FBC80734130EF545828F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 85A01882ED06DFEA2E0CE78BCDB204A7;
+			remoteInfo = Subproject;
+		};
+		841F315F34E8AC07B0933A12 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = A5B49761F8D1EB12585DD45CAA2E489F;
+			remoteInfo = Subproject;
+		};
+		84F768D0EC2CD6BA1818C09C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 8EB3D0724E20D016740D2411561FB73D;
+			remoteInfo = Subproject;
+		};
+		8C7A2D61F805A8AEBA286268 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = A00570BF36465ADD697D04F086FD40B8;
+			remoteInfo = Subproject;
+		};
+		8E14C104041649BCB4FD90F0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = A68E5A9B69A3BA0FD52CAF7A354EC93B;
+			remoteInfo = Subproject;
+		};
+		8F62EEC6B8DF8FDC5B2D2ACA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 9B0F1C74C35F8BDFB49391A4B4C22AAF;
+			remoteInfo = Subproject;
+		};
+		91064763FF7E1560D1D27D9E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 971F6C319DDD4BD078954A5EF77B5BA7;
+			remoteInfo = Subproject;
+		};
+		91FCDC5BDAB67F85E3B73FD2 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = C777CF2FB1E39A45CBBDB54E8693F471;
+			remoteInfo = Subproject;
+		};
+		93150D29866A12F9FF86F248 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 80854D88467765B192E95AC12D7E7825;
+			remoteInfo = Subproject;
+		};
+		96088A94D282B12968B27795 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 666E72807891C591E025A75410CD2A26;
+			remoteInfo = Subproject;
+		};
+		96455C903189CEAC9B0E413E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = E50E54D57E4CB3E0920119CF69AD9A2D;
+			remoteInfo = Subproject;
+		};
+		9837E257990F1B8EE8F23AB5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = B4507A8AA0AD81E8DFC98020268EFC72;
+			remoteInfo = Subproject;
+		};
+		9BCC7AE5B076B9AAC88CD443 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 61A80F68AE163B384B7D7A9E76B6046C;
+			remoteInfo = Subproject;
+		};
+		A1DB256F9C6C9A8E15A50697 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 56554E6B3CBAABB979BD4133E3F13C59;
+			remoteInfo = Subproject;
+		};
+		A4838FA77DF56E7A9E256C86 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 1381503C42FFF460E946860A32A6F981;
+			remoteInfo = Subproject;
+		};
+		A7E4D2610D6B1F91851C5341 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 21B03CA622E690725A6626C088E1D09F;
+			remoteInfo = Subproject;
+		};
+		A8B59F482B48C0330D7130BA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = DE73D8A5ECB254D9D3F8C36C8D201F89;
+			remoteInfo = Subproject;
+		};
+		AB6C70B5D50A6F50613C410F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 842AED998605C42F2C05F53985DA2DF5;
+			remoteInfo = Subproject;
+		};
+		AFDF572ED059356A47635166 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 1E04881EDF02715BD6AC2C6ED3FBB37E;
+			remoteInfo = Subproject;
+		};
+		BAA839560A5D3B6062C2A8F3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = DA7ABB6DD8AEACED51D63B2C774E3A63;
+			remoteInfo = Subproject;
+		};
+		BC2C3549E5531DEB2481CEB1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = EAC01D995CA7E08C03EAF174947B48A2;
+			remoteInfo = Subproject;
+		};
+		BDCA635EBEE61D38A29625A0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = F2E7C88DFCD460A4B46B913ADEB8A641;
+			remoteInfo = Subproject;
+		};
+		BEBDFADD51E46640CAED192B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 193DBE46DE315DBF00EA187D59180A81;
+			remoteInfo = Subproject;
+		};
+		C1C845B6D0FF16A5BE5D07A0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = B0B214D775196BA7CA8E17E53048A493;
+			remoteInfo = Subproject;
+		};
+		C2463F1F7083F41154872A06 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 494E934B4070A029E1A8D42C9BDF4646;
+			remoteInfo = Subproject;
+		};
+		C5DD118E1DF3D2D07D6EA389 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 5E4674603A5D5B9215FFA0F8E69F8B71;
+			remoteInfo = Subproject;
+		};
+		C8FBB6CA2BFD23358E5B51B9 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 220361FF3B2778F8F38C2C4DCC5B49FD;
+			remoteInfo = Subproject;
+		};
+		C9EE753E71C4F5BEC74A94B5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 802121F5B756ACBFDD6D08C36246DADD;
+			remoteInfo = Subproject;
+		};
+		CA593F31B9752A1061484BEB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = E7178FECB829C9576A3723658B07F087;
+			remoteInfo = Subproject;
+		};
+		CA81310A05EEACF15EB94B56 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 6ED2C07E6AE77BBD9A6856E523EF6A06;
+			remoteInfo = Subproject;
+		};
+		CC192D9F2079B49B22A829C2 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = CD31A81A9E8B35D5194EE8ED811B5D64;
+			remoteInfo = Subproject;
+		};
+		CDEB19B564C9B8424904C571 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 52FCF98CEFF94C742080B6965D537AD0;
+			remoteInfo = Subproject;
+		};
+		CE71AA8929E554899DB5D3B8 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 1E649614D7644BF68C2F5D4CB3FBF8DC;
+			remoteInfo = Subproject;
+		};
+		CFE31FCE6FF189C8A3B4A75A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 58926B83684F42641928AA071B863676;
+			remoteInfo = Subproject;
+		};
+		D1B79579329E57C19C6860AC /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = A60E0D6078EA5D03959C5E6EC87537B8;
+			remoteInfo = Subproject;
+		};
+		D36C78673EC105C48E651533 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = E6A16705C69FC7DE11C2469A4A0F8358;
+			remoteInfo = Subproject;
+		};
+		D3EC4F548EEB76FCF98BCACA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = BD71E2539823621820F84384064C253A;
+			remoteInfo = Subproject;
+		};
+		D424A2CF830AEB935098908C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = DAD8B71DF2DFCF15AAF98C06D37D5703;
+			remoteInfo = Subproject;
+		};
+		DAC138290FEF00EB7934B8FF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = ABC8ABA7BE6A035D2B3BD07109EFD54A;
+			remoteInfo = Subproject;
+		};
+		DBCF7D4F8EB4897C272E48D0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 12728BA7F12072B31D5FC2F00E438275;
+			remoteInfo = Subproject;
+		};
+		DE57F157B2F2EDDD475BD1DA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 90EE8D3C082C157169540FC8F5913DAD;
+			remoteInfo = Subproject;
+		};
+		E6D0BA499564C6F19052025B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = BB41A78C1BAC8F34C36E35A225A47DFC;
+			remoteInfo = Subproject;
+		};
+		E7B2AE7D12A0F2E2347A4281 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = D9F334F2E90E3EE462FC4192AF5C03BD;
+			remoteInfo = Subproject;
+		};
+		E9F76D0CBECB3E78EECDB805 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 35A7C1AA6A7F2C78C06A3EA3ECD679B1;
+			remoteInfo = Subproject;
+		};
+		EA513417BED95D4648792D58 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 39D0105B481E5FB78C661496BD63B8A5;
+			remoteInfo = Subproject;
+		};
+		ECC6F6F77F50094F5B4E2116 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = B7610E9FDE749C16C0B1CDAAF3B2DDC2;
+			remoteInfo = Subproject;
+		};
+		EE218FD00AD0B4D2CA569856 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = CF1281E58AA1045D4B7F33FC56691C42;
+			remoteInfo = Subproject;
+		};
+		F1C3E09A36D94F97568208CE /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 2577F299FCB0A19824FE989BE77B8E8F;
+			remoteInfo = Subproject;
+		};
+		F3DDBE6267A37D449407B056 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = C1A919103EAC9813D236486C34FC0A21;
+			remoteInfo = Subproject;
+		};
+		F4039AF749CB61F78B730DD5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 6F73B6C7971A37DCD5170ED89E3DF741;
+			remoteInfo = Subproject;
+		};
+		F7E46FF5EC6C4B776C3FFA2A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 07BCD730F7BAE0FD407C1930FCA0A217;
+			remoteInfo = Subproject;
+		};
+		FA2E300486B560386F6FCE71 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 178DE81B4D5424C480EC2B1B64A6412D;
+			remoteInfo = Subproject;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
-		057ABCB51370272454DC63D8 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = BrickScan/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* BrickScan.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BrickScan.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		13B07FAF1A68108700A75B9A /* AppDelegate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = AppDelegate.h; path = BrickScan/AppDelegate.h; sourceTree = "<group>"; };
-		13B07FB01A68108700A75B9A /* AppDelegate.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = AppDelegate.mm; path = BrickScan/AppDelegate.mm; sourceTree = "<group>"; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = BrickScan/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = BrickScan/Info.plist; sourceTree = "<group>"; };
-		13B07FB71A68108700A75B9A /* main.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = main.m; path = BrickScan/main.m; sourceTree = "<group>"; };
+		3F443B8F89D8B529CC6C2A9D /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = BrickScan/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = Pods.xcodeproj; path = Pods/Pods.xcodeproj; sourceTree = "<group>"; };
+		557856F79269B1B51DB8FB5F /* AppDelegate.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = BrickScan/AppDelegate.swift; sourceTree = "<group>"; };
 		58EEBF8E8E6FB1BC6CAF49B5 /* libPods-BrickScan.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-BrickScan.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		6C2E3173556A471DD304B334 /* Pods-BrickScan.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-BrickScan.debug.xcconfig"; path = "Target Support Files/Pods-BrickScan/Pods-BrickScan.debug.xcconfig"; sourceTree = "<group>"; };
 		7A4D352CD337FB3A3BF06240 /* Pods-BrickScan.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-BrickScan.release.xcconfig"; path = "Target Support Files/Pods-BrickScan/Pods-BrickScan.release.xcconfig"; sourceTree = "<group>"; };
-		8821C482702F4A31AC2DBA34 /* BrickScan-Bridging-Header.h */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.c.h; name = "BrickScan-Bridging-Header.h"; path = "BrickScan/BrickScan-Bridging-Header.h"; sourceTree = "<group>"; };
-		95BD82EAAA9443FFB41FB550 /* noop-file.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = "noop-file.swift"; path = "BrickScan/noop-file.swift"; sourceTree = "<group>"; };
+		80A575A1F1624623807A3B3F /* BrickScan-Bridging-Header.h */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.c.h; name = "BrickScan-Bridging-Header.h"; path = "BrickScan/BrickScan-Bridging-Header.h"; sourceTree = "<group>"; };
+		86742196E8FD4DF7AD773CFF /* noop-file.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = "noop-file.swift"; path = "BrickScan/noop-file.swift"; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = BrickScan/SplashScreen.storyboard; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
@@ -53,15 +656,13 @@
 			isa = PBXGroup;
 			children = (
 				BB2F792B24A3F905000567C9 /* Supporting */,
-				13B07FAF1A68108700A75B9A /* AppDelegate.h */,
-				13B07FB01A68108700A75B9A /* AppDelegate.mm */,
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
-				13B07FB71A68108700A75B9A /* main.m */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
-				95BD82EAAA9443FFB41FB550 /* noop-file.swift */,
-				8821C482702F4A31AC2DBA34 /* BrickScan-Bridging-Header.h */,
-				057ABCB51370272454DC63D8 /* PrivacyInfo.xcprivacy */,
+				86742196E8FD4DF7AD773CFF /* noop-file.swift */,
+				80A575A1F1624623807A3B3F /* BrickScan-Bridging-Header.h */,
+				3F443B8F89D8B529CC6C2A9D /* PrivacyInfo.xcprivacy */,
+				557856F79269B1B51DB8FB5F /* AppDelegate.swift */,
 			);
 			name = BrickScan;
 			sourceTree = "<group>";
@@ -91,6 +692,7 @@
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
 				D65327D7A22EEC0BE12398D9 /* Pods */,
 				D7E4C46ADA2E9064B798F356 /* ExpoModulesProviders */,
+				48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -101,6 +703,91 @@
 			isa = PBXGroup;
 			children = (
 				13B07F961A680F5B00A75B9A /* BrickScan.app */,
+				61369939159BC506903AB721 /* libDoubleConversion.a */,
+				9C55C8E5270C1921A6FB4AEB /* libEASClient.a */,
+				78A6E8111E494250749CCD55 /* libEXConstants.a */,
+				266A94D43816A02998DBC1A7 /* EXConstants.bundle */,
+				229133D898A84DEDB9D3CBC7 /* ExpoConstants_privacy.bundle */,
+				3D7B1CF65CE2FA8FEA772CE0 /* libEXImageLoader.a */,
+				61C1B5D9E43373BDE14BD827 /* libEXJSONUtils.a */,
+				D64BC2D96F2D2B3AED2E4974 /* libEXManifests.a */,
+				5A12DABE01DB5A3E9BC9177B /* libEXStructuredHeaders.a */,
+				F39562B3BD8B0AB82DDC84B8 /* libEXUpdates.a */,
+				BE4887A69F6928631A16FA50 /* EXUpdates.bundle */,
+				A03533D8EC0547F12CC22ABE /* libEXUpdatesInterface.a */,
+				C61A37C36B8A249A96D6593A /* libExpo.a */,
+				5986DCB941288787CA4ADCA7 /* libExpoAsset.a */,
+				8E6E43B8E04C7AB44BCEE91B /* libExpoCamera.a */,
+				09CA386AE9BCC450CE95B82C /* libExpoFileSystem.a */,
+				0041FAC0ACD85BDCA9BB9D74 /* ExpoFileSystem_privacy.bundle */,
+				288744518BDEA3803DAA184F /* libExpoFont.a */,
+				07504682479F848F4DCE6F78 /* libExpoImageManipulator.a */,
+				D017CCB6A2C30133E8499A4F /* libExpoImagePicker.a */,
+				890D72973ACD6CEF539E2003 /* libExpoKeepAwake.a */,
+				95C81E0E15947FCF4241043B /* libExpoModulesCore.a */,
+				2F6540E2E5B394FA415BD787 /* libExpoSecureStore.a */,
+				64361ECB309B63DC064957AB /* libRCT-Folly.a */,
+				AF6161C9ED6E8221D94F332A /* libRCTDeprecation.a */,
+				53C700FB3EFE3B860CFD7141 /* libRCTTypeSafety.a */,
+				91AC18370665A0B0BFB1E4B0 /* libRNCAsyncStorage.a */,
+				612ECB705E9B14CE8404906B /* RNCAsyncStorage_resources.bundle */,
+				B1C927EB8561828EAB2EF550 /* libRNGestureHandler.a */,
+				1CFDC89F9364A29BFB688A29 /* libRNReanimated.a */,
+				2B380096613BEECB47AB7D60 /* libRNSVG.a */,
+				AB28459B35F1DAE376D3FEFF /* RNSVGFilters.bundle */,
+				4DAE917F8B210E5DED161410 /* libRNScreens.a */,
+				5D92BC03F7549FFE5FFA740C /* libReachabilitySwift.a */,
+				D8BBE7E3EF164EDBA4D7D131 /* ReachabilitySwift.bundle */,
+				085E351175744F45C684A8FE /* libReact-Codegen.a */,
+				7295877ABD4B6376ED6A7A8E /* libReact-Core.a */,
+				5CBB22F143E848636DFF88CC /* RCTI18nStrings.bundle */,
+				DDB93DED0B53A2A5FA25F8A4 /* libReact-CoreModules.a */,
+				3E43CEF13D728030DF452DBB /* libReact-Fabric.a */,
+				60AA24F707BD2FABB78013CD /* libReact-FabricImage.a */,
+				1F7DF17CCC1DD4D6E49F7842 /* libReact-ImageManager.a */,
+				EE015F854713B75982F0EB14 /* libReact-Mapbuffer.a */,
+				11F6895AD25AEF5BE2E7069F /* libReact-NativeModulesApple.a */,
+				726AF3736C531D1340AECD07 /* libReact-RCTAnimation.a */,
+				FAE80BDA74D2F2777559E32B /* libReact-RCTAppDelegate.a */,
+				A5B56882C4DC2A4DF177E333 /* libReact-RCTBlob.a */,
+				4CF74D06D966D9A1F9167BE4 /* libReact-RCTFabric.a */,
+				F75E031A616C71FF3D9AFA4F /* libReact-RCTImage.a */,
+				87A5C483C69609849A13CA57 /* libReact-RCTLinking.a */,
+				2B5F478FF19C090048683444 /* libReact-RCTNetwork.a */,
+				53FFB509CF127AD2047C8034 /* libReact-RCTSettings.a */,
+				35ACECEE026F38BB4EC7E539 /* libReact-RCTText.a */,
+				C397B3E6745E0E93E096E7B0 /* libReact-RCTVibration.a */,
+				EB05358A0F7DF99D94DD2246 /* libReact-RuntimeApple.a */,
+				7845197F9E0514A27A3098BB /* libReact-RuntimeCore.a */,
+				4DBB5399035AE2709564ED09 /* libReact-RuntimeHermes.a */,
+				0D5098C714515A51583969D4 /* libReact-cxxreact.a */,
+				43D830A67BB236D301B53E03 /* libReact-debug.a */,
+				23ED3469C880FCC16610A684 /* libReact-featureflags.a */,
+				2D82370EADA908E88182B37C /* libReact-graphics.a */,
+				DAE52640D3FC47BD1CE927F2 /* libReact-hermes.a */,
+				49A2480E1D90CF22FC963E30 /* libReact-jserrorhandler.a */,
+				ECC23014FC11307CA0C4F3DE /* libReact-jsi.a */,
+				C0B2A3E41738C6EB0101C59C /* libReact-jsiexecutor.a */,
+				7D9E26C004806190A536061F /* libReact-jsinspector.a */,
+				0D20B8B88E16351C952CA1F3 /* libReact-logger.a */,
+				869E8656B069D1666F2A1449 /* libReact-nativeconfig.a */,
+				A64C552DC2CF161F05BEDB43 /* libReact-perflogger.a */,
+				45BC785761624E29BB9AEEB5 /* libReact-rendererdebug.a */,
+				EA5E9AA9D797E92539F6F355 /* libReact-runtimescheduler.a */,
+				67804B4B7ACAB4D1AD795CE6 /* libReact-utils.a */,
+				5BB80BDDF4CEF92BF912A072 /* libReactCommon.a */,
+				BB35A3DEC3294BD2F55FC403 /* libSDWebImage.a */,
+				7BE53CEACE1627484AC9BBED /* SDWebImage.bundle */,
+				A2BC83E1C0C5465DFF13797F /* libSDWebImageWebPCoder.a */,
+				023E7F34BC981ABF29E9B31C /* libSocketRocket.a */,
+				3C16B695FC5084096D9CCD53 /* libYoga.a */,
+				9304CFF6CD3C948BAF20C95B /* libZXingObjC.a */,
+				0B033F2B08E91542F1792C4D /* libfmt.a */,
+				5043CE9ABEF7A3434039ECC9 /* libglog.a */,
+				3645F3751183CF7D579E1881 /* liblibwebp.a */,
+				9D6893E604376558F43C384C /* libreact-native-safe-area-context.a */,
+				056BB8DCFFCB00AC65488967 /* libsqlite3.a */,
+				D5752CBBB4B871C769B33E8D /* libPods-BrickScan.a */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -147,17 +834,18 @@
 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "BrickScan" */;
 			buildPhases = (
 				08A4A3CD28434E44B6B9DE2E /* [CP] Check Pods Manifest.lock */,
-				3AA9F479D653AE31C0477F6B /* [Expo] Configure project */,
+				62985FDBB02B5A6123258130 /* [Expo] Configure project */,
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */,
-				251A5801B6CAC40E4141587A /* [CP] Embed Pods Frameworks */,
+				322DD1C84D7B2152AA81AF55 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				D6BBBFFAFE99BB1BF53F6076 /* PBXTargetDependency */,
 			);
 			name = BrickScan;
 			productName = BrickScan;
@@ -188,12 +876,616 @@
 			mainGroup = 83CBB9F61A601CBA00E9B192;
 			productRefGroup = 83CBBA001A601CBA00E9B192 /* Products */;
 			projectDirPath = "";
+			projectReferences = (
+				{
+					ProductGroup = 83CBBA001A601CBA00E9B192 /* Products */;
+					ProjectRef = 48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */;
+				},
+			);
 			projectRoot = "";
 			targets = (
 				13B07F861A680F5B00A75B9A /* BrickScan */,
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXReferenceProxy section */
+		0041FAC0ACD85BDCA9BB9D74 /* ExpoFileSystem_privacy.bundle */ = {
+			isa = PBXReferenceProxy;
+			fileType = "wrapper.plug-in";
+			path = ExpoFileSystem_privacy.bundle;
+			remoteRef = FA2E300486B560386F6FCE71 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		023E7F34BC981ABF29E9B31C /* libSocketRocket.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libSocketRocket.a;
+			remoteRef = 78D0FBC80734130EF545828F /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		056BB8DCFFCB00AC65488967 /* libsqlite3.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libsqlite3.a;
+			remoteRef = 9837E257990F1B8EE8F23AB5 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		07504682479F848F4DCE6F78 /* libExpoImageManipulator.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libExpoImageManipulator.a;
+			remoteRef = 8F62EEC6B8DF8FDC5B2D2ACA /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		085E351175744F45C684A8FE /* libReact-Codegen.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-Codegen.a";
+			remoteRef = CA593F31B9752A1061484BEB /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		09CA386AE9BCC450CE95B82C /* libExpoFileSystem.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libExpoFileSystem.a;
+			remoteRef = CC192D9F2079B49B22A829C2 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		0B033F2B08E91542F1792C4D /* libfmt.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libfmt.a;
+			remoteRef = 24C54408427A123407066D82 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		0D20B8B88E16351C952CA1F3 /* libReact-logger.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-logger.a";
+			remoteRef = 841F315F34E8AC07B0933A12 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		0D5098C714515A51583969D4 /* libReact-cxxreact.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-cxxreact.a";
+			remoteRef = 5D309FB082D0B18329288D49 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		11F6895AD25AEF5BE2E7069F /* libReact-NativeModulesApple.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-NativeModulesApple.a";
+			remoteRef = CE71AA8929E554899DB5D3B8 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		1CFDC89F9364A29BFB688A29 /* libRNReanimated.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libRNReanimated.a;
+			remoteRef = 91FCDC5BDAB67F85E3B73FD2 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		1F7DF17CCC1DD4D6E49F7842 /* libReact-ImageManager.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-ImageManager.a";
+			remoteRef = 2E8E32948F213A9D1B3C0F4C /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		229133D898A84DEDB9D3CBC7 /* ExpoConstants_privacy.bundle */ = {
+			isa = PBXReferenceProxy;
+			fileType = "wrapper.plug-in";
+			path = ExpoConstants_privacy.bundle;
+			remoteRef = E6D0BA499564C6F19052025B /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		23ED3469C880FCC16610A684 /* libReact-featureflags.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-featureflags.a";
+			remoteRef = 91064763FF7E1560D1D27D9E /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		266A94D43816A02998DBC1A7 /* EXConstants.bundle */ = {
+			isa = PBXReferenceProxy;
+			fileType = "wrapper.plug-in";
+			path = EXConstants.bundle;
+			remoteRef = 53B202DA40E585B687AA18D9 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		288744518BDEA3803DAA184F /* libExpoFont.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libExpoFont.a;
+			remoteRef = DAC138290FEF00EB7934B8FF /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		2B380096613BEECB47AB7D60 /* libRNSVG.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libRNSVG.a;
+			remoteRef = DE57F157B2F2EDDD475BD1DA /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		2B5F478FF19C090048683444 /* libReact-RCTNetwork.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-RCTNetwork.a";
+			remoteRef = 8E14C104041649BCB4FD90F0 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		2D82370EADA908E88182B37C /* libReact-graphics.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-graphics.a";
+			remoteRef = 41170DA141AA25B877D6BB8B /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		2F6540E2E5B394FA415BD787 /* libExpoSecureStore.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libExpoSecureStore.a;
+			remoteRef = D1B79579329E57C19C6860AC /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		35ACECEE026F38BB4EC7E539 /* libReact-RCTText.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-RCTText.a";
+			remoteRef = D36C78673EC105C48E651533 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		3645F3751183CF7D579E1881 /* liblibwebp.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = liblibwebp.a;
+			remoteRef = C5DD118E1DF3D2D07D6EA389 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		3C16B695FC5084096D9CCD53 /* libYoga.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libYoga.a;
+			remoteRef = 3EE348638BE5C2FC600F20C1 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		3D7B1CF65CE2FA8FEA772CE0 /* libEXImageLoader.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libEXImageLoader.a;
+			remoteRef = C2463F1F7083F41154872A06 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		3E43CEF13D728030DF452DBB /* libReact-Fabric.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-Fabric.a";
+			remoteRef = A8B59F482B48C0330D7130BA /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		43D830A67BB236D301B53E03 /* libReact-debug.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-debug.a";
+			remoteRef = CA81310A05EEACF15EB94B56 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		45BC785761624E29BB9AEEB5 /* libReact-rendererdebug.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-rendererdebug.a";
+			remoteRef = AFDF572ED059356A47635166 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		49A2480E1D90CF22FC963E30 /* libReact-jserrorhandler.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-jserrorhandler.a";
+			remoteRef = 3F75A901161D08F2AC4C35DD /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		4CF74D06D966D9A1F9167BE4 /* libReact-RCTFabric.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-RCTFabric.a";
+			remoteRef = BAA839560A5D3B6062C2A8F3 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		4DAE917F8B210E5DED161410 /* libRNScreens.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libRNScreens.a;
+			remoteRef = 18C22B3D9F23E37DC72D09DD /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		4DBB5399035AE2709564ED09 /* libReact-RuntimeHermes.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-RuntimeHermes.a";
+			remoteRef = 184617395DBFED8D5B0E3560 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		5043CE9ABEF7A3434039ECC9 /* libglog.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libglog.a;
+			remoteRef = 073241BDBC29F2D279AB249C /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		53C700FB3EFE3B860CFD7141 /* libRCTTypeSafety.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libRCTTypeSafety.a;
+			remoteRef = 2A0207CCC4373871393DDFFA /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		53FFB509CF127AD2047C8034 /* libReact-RCTSettings.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-RCTSettings.a";
+			remoteRef = 0C71FEF5CEEA0E4EA5E103D4 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		5986DCB941288787CA4ADCA7 /* libExpoAsset.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libExpoAsset.a;
+			remoteRef = 93150D29866A12F9FF86F248 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		5A12DABE01DB5A3E9BC9177B /* libEXStructuredHeaders.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libEXStructuredHeaders.a;
+			remoteRef = BEBDFADD51E46640CAED192B /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		5BB80BDDF4CEF92BF912A072 /* libReactCommon.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libReactCommon.a;
+			remoteRef = 5C23AAB02851D654E260D9AE /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		5CBB22F143E848636DFF88CC /* RCTI18nStrings.bundle */ = {
+			isa = PBXReferenceProxy;
+			fileType = "wrapper.plug-in";
+			path = RCTI18nStrings.bundle;
+			remoteRef = 96455C903189CEAC9B0E413E /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		5D92BC03F7549FFE5FFA740C /* libReachabilitySwift.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libReachabilitySwift.a;
+			remoteRef = A7E4D2610D6B1F91851C5341 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		60AA24F707BD2FABB78013CD /* libReact-FabricImage.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-FabricImage.a";
+			remoteRef = 9BCC7AE5B076B9AAC88CD443 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		612ECB705E9B14CE8404906B /* RNCAsyncStorage_resources.bundle */ = {
+			isa = PBXReferenceProxy;
+			fileType = "wrapper.plug-in";
+			path = RNCAsyncStorage_resources.bundle;
+			remoteRef = 53FDEAF90CA1D86325B87639 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		61369939159BC506903AB721 /* libDoubleConversion.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libDoubleConversion.a;
+			remoteRef = 74CB35D6C016BAF4AFED8DAB /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		61C1B5D9E43373BDE14BD827 /* libEXJSONUtils.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libEXJSONUtils.a;
+			remoteRef = 680A2D184B76CE8777E67473 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		64361ECB309B63DC064957AB /* libRCT-Folly.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libRCT-Folly.a";
+			remoteRef = 4A4181FE081ABA7E9EBBAC25 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		67804B4B7ACAB4D1AD795CE6 /* libReact-utils.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-utils.a";
+			remoteRef = ECC6F6F77F50094F5B4E2116 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		726AF3736C531D1340AECD07 /* libReact-RCTAnimation.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-RCTAnimation.a";
+			remoteRef = 6201065F7000E491432A35EC /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		7295877ABD4B6376ED6A7A8E /* libReact-Core.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-Core.a";
+			remoteRef = D3EC4F548EEB76FCF98BCACA /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		7845197F9E0514A27A3098BB /* libReact-RuntimeCore.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-RuntimeCore.a";
+			remoteRef = 5CE1E1A247548BFBBB551FFE /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		78A6E8111E494250749CCD55 /* libEXConstants.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libEXConstants.a;
+			remoteRef = C8FBB6CA2BFD23358E5B51B9 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		7BE53CEACE1627484AC9BBED /* SDWebImage.bundle */ = {
+			isa = PBXReferenceProxy;
+			fileType = "wrapper.plug-in";
+			path = SDWebImage.bundle;
+			remoteRef = EE218FD00AD0B4D2CA569856 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		7D9E26C004806190A536061F /* libReact-jsinspector.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-jsinspector.a";
+			remoteRef = F1C3E09A36D94F97568208CE /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		869E8656B069D1666F2A1449 /* libReact-nativeconfig.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-nativeconfig.a";
+			remoteRef = 5A78BB2E2A839AECBEC4E030 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		87A5C483C69609849A13CA57 /* libReact-RCTLinking.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-RCTLinking.a";
+			remoteRef = C9EE753E71C4F5BEC74A94B5 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		890D72973ACD6CEF539E2003 /* libExpoKeepAwake.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libExpoKeepAwake.a;
+			remoteRef = F7E46FF5EC6C4B776C3FFA2A /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		8E6E43B8E04C7AB44BCEE91B /* libExpoCamera.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libExpoCamera.a;
+			remoteRef = 84F768D0EC2CD6BA1818C09C /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		91AC18370665A0B0BFB1E4B0 /* libRNCAsyncStorage.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libRNCAsyncStorage.a;
+			remoteRef = 253F232BEB044DAFC0B2EFE4 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		9304CFF6CD3C948BAF20C95B /* libZXingObjC.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libZXingObjC.a;
+			remoteRef = F4039AF749CB61F78B730DD5 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		95C81E0E15947FCF4241043B /* libExpoModulesCore.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libExpoModulesCore.a;
+			remoteRef = 623B4AD1F42508730811EF0C /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		9C55C8E5270C1921A6FB4AEB /* libEASClient.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libEASClient.a;
+			remoteRef = 1F067064ADD98BC906BC4644 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		9D6893E604376558F43C384C /* libreact-native-safe-area-context.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libreact-native-safe-area-context.a";
+			remoteRef = CDEB19B564C9B8424904C571 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		A03533D8EC0547F12CC22ABE /* libEXUpdatesInterface.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libEXUpdatesInterface.a;
+			remoteRef = DBCF7D4F8EB4897C272E48D0 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		A2BC83E1C0C5465DFF13797F /* libSDWebImageWebPCoder.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libSDWebImageWebPCoder.a;
+			remoteRef = 3700F28A595F0A20AB59B818 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		A5B56882C4DC2A4DF177E333 /* libReact-RCTBlob.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-RCTBlob.a";
+			remoteRef = 6F69B1D7D9AF7D92AFE902CD /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		A64C552DC2CF161F05BEDB43 /* libReact-perflogger.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-perflogger.a";
+			remoteRef = 96088A94D282B12968B27795 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		AB28459B35F1DAE376D3FEFF /* RNSVGFilters.bundle */ = {
+			isa = PBXReferenceProxy;
+			fileType = "wrapper.plug-in";
+			path = RNSVGFilters.bundle;
+			remoteRef = A1DB256F9C6C9A8E15A50697 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		AF6161C9ED6E8221D94F332A /* libRCTDeprecation.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libRCTDeprecation.a;
+			remoteRef = 07F5F014CC687183BA7D312E /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		B1C927EB8561828EAB2EF550 /* libRNGestureHandler.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libRNGestureHandler.a;
+			remoteRef = 4A3C5D5292AC876CA37B84AF /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		BB35A3DEC3294BD2F55FC403 /* libSDWebImage.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libSDWebImage.a;
+			remoteRef = C1C845B6D0FF16A5BE5D07A0 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		BE4887A69F6928631A16FA50 /* EXUpdates.bundle */ = {
+			isa = PBXReferenceProxy;
+			fileType = "wrapper.plug-in";
+			path = EXUpdates.bundle;
+			remoteRef = BC2C3549E5531DEB2481CEB1 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		C0B2A3E41738C6EB0101C59C /* libReact-jsiexecutor.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-jsiexecutor.a";
+			remoteRef = BDCA635EBEE61D38A29625A0 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		C397B3E6745E0E93E096E7B0 /* libReact-RCTVibration.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-RCTVibration.a";
+			remoteRef = F3DDBE6267A37D449407B056 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		C61A37C36B8A249A96D6593A /* libExpo.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libExpo.a;
+			remoteRef = CFE31FCE6FF189C8A3B4A75A /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		D017CCB6A2C30133E8499A4F /* libExpoImagePicker.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libExpoImagePicker.a;
+			remoteRef = 69187EFD9C8B90C6B4168CEB /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		D5752CBBB4B871C769B33E8D /* libPods-BrickScan.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libPods-BrickScan.a";
+			remoteRef = 8C7A2D61F805A8AEBA286268 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		D64BC2D96F2D2B3AED2E4974 /* libEXManifests.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libEXManifests.a;
+			remoteRef = 4AC4BC8392AA97FCCB08AECB /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		D8BBE7E3EF164EDBA4D7D131 /* ReachabilitySwift.bundle */ = {
+			isa = PBXReferenceProxy;
+			fileType = "wrapper.plug-in";
+			path = ReachabilitySwift.bundle;
+			remoteRef = AB6C70B5D50A6F50613C410F /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		DAE52640D3FC47BD1CE927F2 /* libReact-hermes.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-hermes.a";
+			remoteRef = D424A2CF830AEB935098908C /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		DDB93DED0B53A2A5FA25F8A4 /* libReact-CoreModules.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-CoreModules.a";
+			remoteRef = 535E2E1EC48C018516669DBA /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		EA5E9AA9D797E92539F6F355 /* libReact-runtimescheduler.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-runtimescheduler.a";
+			remoteRef = 35D08A9A2745F59E894518DF /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		EB05358A0F7DF99D94DD2246 /* libReact-RuntimeApple.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-RuntimeApple.a";
+			remoteRef = A4838FA77DF56E7A9E256C86 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		ECC23014FC11307CA0C4F3DE /* libReact-jsi.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-jsi.a";
+			remoteRef = E7B2AE7D12A0F2E2347A4281 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		EE015F854713B75982F0EB14 /* libReact-Mapbuffer.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-Mapbuffer.a";
+			remoteRef = 5A2A461F21762DF65CEF222E /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		F39562B3BD8B0AB82DDC84B8 /* libEXUpdates.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libEXUpdates.a;
+			remoteRef = E9F76D0CBECB3E78EECDB805 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		F75E031A616C71FF3D9AFA4F /* libReact-RCTImage.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-RCTImage.a";
+			remoteRef = 1E84CCCD8EFD5DA29F34CB02 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		FAE80BDA74D2F2777559E32B /* libReact-RCTAppDelegate.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = "libReact-RCTAppDelegate.a";
+			remoteRef = EA513417BED95D4648792D58 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+/* End PBXReferenceProxy section */
 
 /* Begin PBXResourcesBuildPhase section */
 		13B07F8E1A680F5B00A75B9A /* Resources */ = {
@@ -203,7 +1495,7 @@
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
-				EDD1EF71A31E40B4937C484A /* PrivacyInfo.xcprivacy in Resources */,
+				B512435B5DD810FF15E0A958 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -247,25 +1539,25 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
-		251A5801B6CAC40E4141587A /* [CP] Embed Pods Frameworks */ = {
+		322DD1C84D7B2152AA81AF55 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			inputPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-BrickScan/Pods-BrickScan-frameworks.sh",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/hermes-engine/Pre-built/hermes.framework/hermes",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/hermes-engine/Pre-built/hermesvm.framework/hermesvm",
 			);
 			name = "[CP] Embed Pods Frameworks";
 			outputPaths = (
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermes.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermesvm.framework",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-BrickScan/Pods-BrickScan-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
-		3AA9F479D653AE31C0477F6B /* [Expo] Configure project */ = {
+		62985FDBB02B5A6123258130 /* [Expo] Configure project */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -274,11 +1566,16 @@
 			inputFileListPaths = (
 			);
 			inputPaths = (
+				"$(SRCROOT)/.xcode.env",
+				"$(SRCROOT)/.xcode.env.local",
+				"$(SRCROOT)/BrickScan/BrickScan.entitlements",
+				"$(SRCROOT)/Pods/Target Support Files/Pods-BrickScan/expo-configure-project.sh",
 			);
 			name = "[Expo] Configure project";
 			outputFileListPaths = (
 			);
 			outputPaths = (
+				"$(SRCROOT)/Pods/Target Support Files/Pods-BrickScan/ExpoModulesProvider.swift",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -293,21 +1590,37 @@
 				"${PODS_ROOT}/Target Support Files/Pods-BrickScan/Pods-BrickScan-resources.sh",
 				"${PODS_CONFIGURATION_BUILD_DIR}/EXConstants/EXConstants.bundle",
 				"${PODS_CONFIGURATION_BUILD_DIR}/EXConstants/ExpoConstants_privacy.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/EXUpdates/EXUpdates.bundle",
 				"${PODS_CONFIGURATION_BUILD_DIR}/ExpoFileSystem/ExpoFileSystem_privacy.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/RCT-Folly/RCT-Folly_privacy.bundle",
 				"${PODS_CONFIGURATION_BUILD_DIR}/RNCAsyncStorage/RNCAsyncStorage_resources.bundle",
 				"${PODS_CONFIGURATION_BUILD_DIR}/RNSVG/RNSVGFilters.bundle",
-				"${PODS_CONFIGURATION_BUILD_DIR}/React-Core/RCTI18nStrings.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/ReachabilitySwift/ReachabilitySwift.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/React-Core/React-Core_privacy.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/React-cxxreact/React-cxxreact_privacy.bundle",
 				"${PODS_CONFIGURATION_BUILD_DIR}/SDWebImage/SDWebImage.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/boost/boost_privacy.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/expo-dev-launcher/EXDevLauncher.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/expo-dev-menu/EXDevMenu.bundle",
+				"${PODS_CONFIGURATION_BUILD_DIR}/glog/glog_privacy.bundle",
 			);
 			name = "[CP] Copy Pods Resources";
 			outputPaths = (
 				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/EXConstants.bundle",
 				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ExpoConstants_privacy.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/EXUpdates.bundle",
 				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ExpoFileSystem_privacy.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/RCT-Folly_privacy.bundle",
 				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/RNCAsyncStorage_resources.bundle",
 				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/RNSVGFilters.bundle",
-				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/RCTI18nStrings.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/ReachabilitySwift.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/React-Core_privacy.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/React-cxxreact_privacy.bundle",
 				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/SDWebImage.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/boost_privacy.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/EXDevLauncher.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/EXDevMenu.bundle",
+				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/glog_privacy.bundle",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -321,14 +1634,21 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				13B07FBC1A68108700A75B9A /* AppDelegate.mm in Sources */,
-				13B07FC11A68108700A75B9A /* main.m in Sources */,
 				B18059E884C0ABDD17F3DC3D /* ExpoModulesProvider.swift in Sources */,
-				02FF258D98CA47B29E5B7E21 /* noop-file.swift in Sources */,
+				D64893A54DD4459D8358E2F8 /* noop-file.swift in Sources */,
+				DCFB97D9CBE06348F59AF434 /* AppDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		D6BBBFFAFE99BB1BF53F6076 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = "Pods-BrickScan";
+			targetProxy = 523A8AA1A21D99A0504D9E68 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
@@ -338,20 +1658,17 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = BrickScan/BrickScan.entitlements;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = Z5Z57TS6M4;
 				ENABLE_BITCODE = NO;
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
 					"FB_SONARKIT_ENABLED=1",
 				);
 				INFOPLIST_FILE = BrickScan/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
@@ -376,15 +1693,12 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = BrickScan/BrickScan.entitlements;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = Z5Z57TS6M4;
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				INFOPLIST_FILE = BrickScan/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
@@ -450,22 +1764,22 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD = "";
 				LDPLUSPLUS = "";
-				LD_RUNPATH_SEARCH_PATHS = (
-					/usr/lib/swift,
-					"$(inherited)",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "/usr/lib/swift $(inherited)";
 				LIBRARY_SEARCH_PATHS = "$(SDKROOT)/usr/lib/swift\"$(inherited)\"";
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
+				OTHER_CFLAGS = "$(inherited)";
+				OTHER_CPLUSPLUSFLAGS = "$(inherited)";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					" ",
 				);
 				REACT_NATIVE_PATH = "${PODS_ROOT}/../../node_modules/react-native";
 				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
 				USE_HERMES = true;
 			};
 			name = Debug;
@@ -512,15 +1826,14 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD = "";
 				LDPLUSPLUS = "";
-				LD_RUNPATH_SEARCH_PATHS = (
-					/usr/lib/swift,
-					"$(inherited)",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "/usr/lib/swift $(inherited)";
 				LIBRARY_SEARCH_PATHS = "$(SDKROOT)/usr/lib/swift\"$(inherited)\"";
 				MTL_ENABLE_DEBUG_INFO = NO;
+				OTHER_CFLAGS = "$(inherited)";
+				OTHER_CPLUSPLUSFLAGS = "$(inherited)";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					" ",

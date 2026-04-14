@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, ReactNode } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,6 @@ import {
   PanResponder,
   GestureResponderEvent,
   PanResponderGestureState,
-  ReactNode,
 } from 'react-native';
 
 interface BottomSheetProps {

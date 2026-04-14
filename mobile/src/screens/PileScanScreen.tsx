@@ -8,7 +8,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { apiClient, PileResult } from '@/services/api';
 import * as ImageManipulator from 'expo-image-manipulator';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ScanStackParamList } from '@/types';
 import { C, R, S, T, shadow, gs } from '@/constants/theme';

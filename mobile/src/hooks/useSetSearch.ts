@@ -1,4 +1,4 @@
-import { useInfiniteQuery, UseInfiniteQueryResult } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { useRef, useEffect, useState } from 'react';
 import { Config } from '../constants/config';
 
@@ -45,16 +45,10 @@ async function searchSets(
   return response.json();
 }
 
-interface UseSetSearchReturn
-  extends UseInfiniteQueryResult<SetSearchResponse, Error> {
-  debouncedSearch: (query: string, theme?: string) => void;
-  isSearching: boolean;
-}
-
-export const useSetSearch = (): UseSetSearchReturn => {
+export const useSetSearch = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchTheme, setSearchTheme] = useState<string | undefined>();
-  const debounceTimer = useRef<NodeJS.Timeout>();
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isSearching, setIsSearching] = useState(false);
 
   const query = useInfiniteQuery({
