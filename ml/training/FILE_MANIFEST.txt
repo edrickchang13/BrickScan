@@ -1,0 +1,204 @@
+LEGO Brick Classifier - Training Pipeline File Manifest
+========================================================
+
+Directory Structure:
+/mnt/Lego/brickscan/ml/training/
+├── __init__.py                 - Package initialization
+├── dataset.py                  - PyTorch Dataset and label encoder utilities
+├── model.py                    - Dual-head EfficientNet-B3 classifier
+├── train.py                    - Complete training script with mixed precision
+├── export_onnx.py              - Export trained model to ONNX format
+├── evaluate.py                 - Evaluation script with metrics and confusion matrix
+├── requirements.txt            - Python dependencies
+├── train.sh                    - Bash launcher script
+├── PIPELINE.md                 - Comprehensive documentation
+├── QUICKSTART.md               - Quick reference guide
+└── FILE_MANIFEST.txt           - This file
+
+FILE DESCRIPTIONS
+=================
+
+1. __init__.py (35 lines)
+   - Package initialization file
+   - Exports: LegoPartsDataset, build_label_encoders, save_label_encoders, LegoBrickClassifier
+
+2. dataset.py (130 lines)
+   - build_label_encoders(csv_path) -> (part_encoder, color_encoder)
+     * Reads index.csv and creates part_num→idx and color_name→idx mappings
+   
+   - save_label_encoders(part_encoder, color_encoder, output_dir)
+     * Saves encoders to JSON files for inference
+   
+   - LegoPartsDataset(torch.utils.data.Dataset)
+     * __init__: Initialize with CSV, images_dir, encoders, augmentation settings
+     * __len__: Returns dataset size
+     * __getitem__: Returns (image_tensor, part_label_idx, color_label_idx)
+     * Training augmentations: random crop, flip, color jitter, rotation
+     * Validation augmentations: center crop only
+     * ImageNet normalization applied
+
+3. model.py (80 lines)
+   - LegoBrickClassifier(torch.nn.Module)
+     * __init__(num_parts, num_colors)
+       - Backbone: EfficientNet-B3 (ImageNet pretrained)
+       - Part head: Linear(1536→512→num_parts) + ReLU + Dropout(0.4)
+       - Color head: Linear(1536→256→num_colors) + ReLU + Dropout(0.3)
+     
+     * forward(x) -> (part_logits, color_logits)
+       - Returns separate logits for training
+     
+     * forward_onnx(x) -> concatenated_logits
+       - Returns cat([part_logits, color_logits], dim=1) for ONNX export
+       - Output shape: [batch, num_parts + num_colors]
+
+4. train.py (320 lines)
+   - Trainer class
+     * Handles training/validation loops
+     * Mixed precision training with torch.cuda.amp
+     * Gradient clipping and weight decay
+     * TensorBoard logging
+     * Early stopping with patience=10
+     * Checkpoint saving every 5 epochs + best model
+   
+   - main() function with argparse
+     * Arguments: data_dir, output_dir, epochs, batch_size, lr, workers, val_split, resume
+     * Creates train/val split from full dataset
+     * Instantiates Trainer and runs training
+
+5. export_onnx.py (120 lines)
+   - export_to_onnx(checkpoint_path, output_path, labels_dir, device)
+     * Loads checkpoint and model
+     * Exports to ONNX with dynamic batch axis
+     * Validates ONNX model integrity with onnx.checker
+     * Tests inference with onnxruntime
+     * Prints output shape and class counts
+   
+   - main() with argparse
+     * Arguments: checkpoint, output, labels_dir
+
+6. evaluate.py (220 lines)
+   - evaluate(model, val_loader, device, part_encoder, color_encoder)
+     * Computes part top-1 and top-5 accuracy
+     * Computes color top-1 accuracy
+     * Builds confusion matrix for top-20 most common parts
+     * Returns all metrics
+   
+   - plot_confusion_matrix(cm, class_names, output_path)
+     * Generates PNG visualization with annotations
+   
+   - main() with argparse
+     * Arguments: checkpoint, data_dir, output_dir, batch_size, workers
+     * Saves evaluation_results.json and confusion_matrix_top20_parts.png
+
+7. requirements.txt
+   - torch>=2.1.0
+   - torchvision>=0.16.0
+   - onnx>=1.15.0
+   - onnxruntime-gpu>=1.17.0
+   - pandas>=2.0.0
+   - pillow>=10.0.0
+   - tqdm>=4.66.0
+   - tensorboard>=2.15.0
+   - scikit-learn>=1.3.0
+   - matplotlib>=3.8.0
+
+8. train.sh (bash executable)
+   - Sets CUDA_VISIBLE_DEVICES=0
+   - Activates venv if exists
+   - Prints nvidia-smi output
+   - Runs train.py with sensible defaults
+   - Default paths:
+     * DATA_DIR: ../data
+     * OUTPUT_DIR: ../models
+     * MODELS_DIR: ../models
+
+9. PIPELINE.md (400+ lines)
+   - Complete documentation
+   - Architecture overview with diagrams
+   - Setup instructions
+   - Training guide with examples
+   - ONNX export instructions
+   - Evaluation guide
+   - FastAPI integration example
+   - Training details (augmentation, loss, optimization)
+   - Performance expectations
+   - Troubleshooting guide
+
+10. QUICKSTART.md
+    - One-liner quick start
+    - Step-by-step manual training
+    - Output files reference
+    - Monitor training with TensorBoard
+    - Resume training
+    - FastAPI integration code example
+    - Hyperparameter tuning suggestions
+    - Troubleshooting quick tips
+
+WORKFLOW
+========
+
+1. Install dependencies:
+   pip install -r requirements.txt
+
+2. Prepare data:
+   - Place renders in /mnt/Lego/brickscan/ml/data/renders/
+   - Ensure index.csv exists with correct columns
+
+3. Train model:
+   ./train.sh
+   OR
+   python train.py --data-dir ... --output-dir ... --epochs 50
+
+4. Export to ONNX:
+   python export_onnx.py --checkpoint best_model.pt --output lego_classifier.onnx --labels-dir models/
+
+5. Evaluate:
+   python evaluate.py --checkpoint best_model.pt --data-dir ... --output-dir models/
+
+6. Use in FastAPI:
+   - Load lego_classifier.onnx with onnxruntime
+   - Load part_labels.json and color_labels.json
+   - Split output logits at num_parts boundary
+   - Apply softmax and argmax/top-k
+
+OUTPUT STRUCTURE
+================
+
+After full pipeline:
+models/
+├── best_model.pt                          (~150-200 MB)
+├── checkpoint_epoch_5.pt                  (~150-200 MB)
+├── checkpoint_epoch_10.pt                 (~150-200 MB)
+├── ...
+├── lego_classifier.onnx                   (~100-150 MB)
+├── part_labels.json                       (< 1 KB)
+├── color_labels.json                      (< 1 KB)
+├── evaluation_results.json                (< 1 KB)
+├── confusion_matrix_top20_parts.png       (< 1 MB)
+└── logs/
+    └── events.out.tfevents.xxx            (1-10 MB per epoch)
+
+INTEGRATION WITH FASTAPI
+========================
+
+The ONNX model output format is specifically designed for FastAPI:
+- Input: [batch_size, 3, 224, 224] float32 (ImageNet normalized)
+- Output: [batch_size, num_parts + num_colors] float32 (logits)
+
+The backend splits the output:
+- part_logits = output[:, :num_parts]
+- color_logits = output[:, num_parts:]
+
+Then applies softmax and picks top-k for parts, argmax for colors.
+
+PRODUCTION READINESS
+====================
+
+All files are:
+- Fully typed with type hints
+- Production-ready error handling
+- Comprehensive logging
+- Documented with docstrings
+- Tested for ONNX export/import
+- Optimized for GPU training
+- Ready for FastAPI integration

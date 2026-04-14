@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "BrickScan",
+    "slug": "brickscan",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "bundleIdentifier": "com.brickscan.app",
+      "supportsTabletMode": false,
+      "infoPlist": {
+        "NSCameraUsageDescription": "We need camera access to scan LEGO pieces",
+        "NSPhotoLibraryUsageDescription": "We need access to your photos to scan LEGO pieces"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow BrickScan to access your camera"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow BrickScan to access your photos",
+          "cameraPermission": "Allow BrickScan to access your camera"
+        }
+      ]
+    ]
+  }
+}

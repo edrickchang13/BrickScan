@@ -1,0 +1,85 @@
+services:
+  db:
+    image: postgres:16
+    container_name: brickscan_db
+    environment:
+      POSTGRES_DB: brickscan
+      POSTGRES_USER: brickscan_user
+      POSTGRES_PASSWORD: brickscan_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - brickscan_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brickscan_user -d brickscan"]
+      interval: 10s
+      timeout: 5s
+      retries: 5 
+    networks:
+      - brickscan_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: brickscan_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - brickscan_redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - brickscan_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: brickscan_backend
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://brickscan_user:brickscan_password@db:5432/brickscan
+      REDIS_URL: redis://redis:6379
+      ML_MODEL_PATH: /app/models/lego_classifier.onnx
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/main.py:/app/main.py
+      - ./backend/app:/app/app
+      - ./backend/alembic:/app/alembic
+      - ./backend/models:/app/models
+      - ./data_pipeline:/app/data_pipeline
+      - brickscan_sqlite_data:/root
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - brickscan_network
+
+  adminer:
+    image: adminer:latest
+    container_name: brickscan_adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+    networks:
+      - brickscan_network
+
+volumes:
+  brickscan_db_data:
+  brickscan_redis_data:
+  brickscan_sqlite_data:
+
+networks:
+  brickscan_network:
+    driver: bridge

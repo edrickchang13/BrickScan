@@ -1,0 +1,32 @@
+# Example parts_subset.txt - one part number per line
+# Copy this file and customize for your dataset
+# Part numbers are from the LDraw library
+
+# Standard bricks
+3004
+3001
+3002
+3003
+
+# Plates
+3022
+3023
+3024
+
+# Slopes
+3045
+3659
+3660
+
+# Other shapes
+3040
+3069
+3070
+
+# Minifigure parts
+3838
+3838a
+
+# Wheels
+2470
+3739

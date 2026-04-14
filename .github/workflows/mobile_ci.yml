@@ -1,0 +1,105 @@
+name: Mobile CI
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile_ci.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile_ci.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: './mobile/package-lock.json'
+
+    - name: Install dependencies
+      working-directory: ./mobile
+      run: npm ci
+
+    - name: TypeScript type check
+      working-directory: ./mobile
+      run: npx tsc --noEmit
+
+    - name: Run Jest tests
+      working-directory: ./mobile
+      run: npm test -- --coverage --passWithNoTests
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./mobile/coverage/coverage-final.json
+        flags: mobile
+        name: codecov-mobile
+        fail_ci_if_error: false
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: './mobile/package-lock.json'
+
+    - name: Install dependencies
+      working-directory: ./mobile
+      run: npm ci
+
+    - name: ESLint check
+      working-directory: ./mobile
+      run: npm run lint -- --max-warnings 0
+      continue-on-error: true
+
+    - name: Prettier format check
+      working-directory: ./mobile
+      run: npx prettier --check src/
+      continue-on-error: true
+
+  expo-build:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: './mobile/package-lock.json'
+
+    - name: Install dependencies
+      working-directory: ./mobile
+      run: npm ci
+
+    - name: Setup Expo CLI
+      run: npm install -g expo-cli
+
+    - name: Install eas-cli
+      run: npm install -g eas-cli
+
+    - name: Validate EAS config
+      working-directory: ./mobile
+      run: eas build --platform ios --dry-run
+      env:
+        EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      continue-on-error: true
