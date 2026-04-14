@@ -381,8 +381,13 @@ export const ScanScreen: React.FC<Props> = ({ navigation }) => {
             accumulateVote(result.predictions);
           }
         }
-      } catch {
-        // Swallow individual frame errors — we'll recover on the next tick
+      } catch (err) {
+        // Log individual frame errors but don't stop the loop — we'll recover on the next tick.
+        // Silently swallowing was hiding permissions/network/file-system failures that kept the
+        // UI stuck in "scanning" forever. See mobile code-quality audit 2026-04-14.
+        if (__DEV__) {
+          console.warn('[LiveScan] frame capture error:', err);
+        }
       } finally {
         isProcessingFrame.current = false;
       }
@@ -412,6 +417,15 @@ export const ScanScreen: React.FC<Props> = ({ navigation }) => {
     const sorted = Array.from(votesSnapshot.values())
       .sort((a, b) => b.frameCount - a.frameCount);
     const top = sorted[0];
+    // Defensive: the check above guards against `totalFrames < 2 || votesSnapshot.size === 0`,
+    // but belt-and-suspenders — do not dereference `top` if the sort returned nothing.
+    if (!top) {
+      Alert.alert('Not Enough Data', 'Keep the camera steady and try again.');
+      setLiveVotes(new Map());
+      setLiveTotalFrames(0);
+      setLockedResult(null);
+      return;
+    }
     const confidence = top.frameCount / totalFrames;
 
     const predictions = sorted.map((e, i) => ({
@@ -432,8 +446,9 @@ export const ScanScreen: React.FC<Props> = ({ navigation }) => {
     };
 
     // Feature 2: Check for duplicates
+    // NOTE: checkForDuplicates signature is (partNum, colorId, result) — do not swap order
     if (top.partNum && top.colorId) {
-      await checkForDuplicates(String(top.colorId), top.partNum, resultData);
+      await checkForDuplicates(top.partNum, String(top.colorId), resultData);
     } else {
       await updateSessionCount();
       navigation.navigate('ScanResultScreen', resultData);
@@ -653,7 +668,11 @@ export const ScanScreen: React.FC<Props> = ({ navigation }) => {
         agreementScore: result.agreementScore,
       });
     } catch (error) {
-      // On error, proceed without duplicate check
+      // Duplicate-check API call failed — log it so the bug isn't invisible, then
+      // proceed to the result screen (duplicate warning silently disabled for this scan).
+      if (__DEV__) {
+        console.warn('[ScanScreen] duplicate check failed, skipping warning:', error);
+      }
       await updateSessionCount();
       navigation.navigate('ScanResultScreen', {
         predictions: result.predictions,
@@ -664,9 +683,11 @@ export const ScanScreen: React.FC<Props> = ({ navigation }) => {
     }
   }, [navigation]);
 
-  const handleAddAnyway = useCallback(() => {
+  const handleAddAnyway = useCallback(async () => {
     if (pendingScanResult) {
-      updateSessionCount();
+      // Await so the session-count write lands before we navigate away (was a
+      // race causing stale counts in analytics).
+      await updateSessionCount();
       navigation.navigate('ScanResultScreen', {
         predictions: pendingScanResult.predictions,
         scanMode: pendingScanResult.scanMode,
