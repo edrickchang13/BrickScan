@@ -4,7 +4,7 @@ All endpoints require admin flag on user account.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,26 +20,35 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-def check_admin(current_user: User) -> User:
+async def check_admin(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> User:
     """
     Dependency to verify user has admin privileges.
 
-    Args:
-    - current_user: Authenticated user from get_current_user
-
-    Returns:
-    - User if admin, raises 403 otherwise
+    `get_current_user` returns the JWT payload (a dict), NOT a User ORM instance.
+    This dependency looks up the corresponding User row and verifies the admin flag.
 
     Raises:
-    - HTTPException: If user is not admin
+    - HTTPException 401 if user no longer exists
+    - HTTPException 403 if user is not admin
     """
-    if not current_user.is_admin:
-        logger.warning(f"Non-admin user {current_user.id} attempted admin action")
+    user_id = current_user.get("sub")
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+    if not user.is_admin:
+        logger.warning("Non-admin user %s attempted admin action", user.id)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
         )
-    return current_user
+    return user
 
 
 @router.get("/stats")
@@ -69,7 +78,7 @@ async def get_system_stats(
         total_scans = scans_result.scalar() or 0
 
         # Scans this week
-        week_ago = datetime.utcnow() - timedelta(days=7)
+        week_ago = datetime.now(timezone.utc) - timedelta(days=7)
         scans_week_result = await db.execute(
             select(func.count(Scan.id)).where(Scan.created_at >= week_ago)
         )
@@ -101,7 +110,7 @@ async def get_system_stats(
             "total_inventory_items": total_inventory,
             "active_users_7d": active_users_7d,
             "model_version": "1.0.0",  # From config/environment
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
     except Exception as e:
@@ -136,13 +145,13 @@ async def trigger_rebrickable_sync(
         # In production, this should be an async background task
         # For now, we'll execute synchronously but in a limited way
         result = await sync_new_sets(
-            db, settings.REBRICKABLE_API_KEY, since_date=datetime.utcnow() - timedelta(days=7)
+            db, settings.REBRICKABLE_API_KEY, since_date=datetime.now(timezone.utc) - timedelta(days=7)
         )
 
         return {
             "status": "completed",
             "sets_synced": result.get("count", 0) if result else 0,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
     except Exception as e:

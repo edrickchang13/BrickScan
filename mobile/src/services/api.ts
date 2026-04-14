@@ -56,9 +56,22 @@ async function withRetry<T>(
         status === 504 ||
         err.code === 'ECONNABORTED' || // timeout
         err.code === 'ERR_NETWORK';
-      if (!isRetryable || attempt === retries) throw err;
+      // DIAGNOSTIC: log exact reason for retry — helps debug
+      // "scan hangs forever" vs "backend unreachable" vs "404".
+      const errDetail =
+        err?.code ??
+        err?.response?.status ??
+        err?.message ??
+        'unknown';
+      const errMsg = err?.message ?? String(err);
+      const url = err?.config?.url ?? '(no url)';
+      const method = err?.config?.method ?? '(no method)';
+      if (!isRetryable || attempt === retries) {
+        console.error(`[BrickScan] Giving up after ${attempt + 1} attempts — ${method.toUpperCase()} ${url} → ${errDetail}: ${errMsg}`);
+        throw err;
+      }
       const delay = baseDelay * Math.pow(2, attempt);
-      console.log(`[BrickScan] Retry ${attempt + 1}/${retries} in ${delay}ms…`);
+      console.log(`[BrickScan] Retry ${attempt + 1}/${retries} in ${delay}ms (${method.toUpperCase()} ${url} failed: ${errDetail})`);
       await new Promise<void>((r) => setTimeout(r, delay));
     }
   }
@@ -137,15 +150,17 @@ class ApiClient {
   // ------------------------------------------------------------------
   async searchParts(query: string): Promise<Part[]> {
     return withRetry(async () => {
-      const response = await this.client.get('/parts/search', { params: { q: query } });
-      return response.data.data || [];
+      // Backend mounts parts at /api/parts; query param is `search`, not `q`.
+      const response = await this.client.get('/api/parts/', { params: { search: query } });
+      return response.data.data || response.data || [];
     });
   }
 
   async getPartByNum(partNum: string): Promise<Part> {
     return withRetry(async () => {
-      const response = await this.client.get(`/parts/${partNum}`);
-      return response.data.data;
+      // Backend returns a flat object, not { data: {...} }
+      const response = await this.client.get(`/api/parts/${partNum}`);
+      return response.data.data || response.data;
     });
   }
 
@@ -297,30 +312,29 @@ class ApiClient {
           return { predictions };
         }
 
-        // With depth file, use multipart form data
-        const FormData = (globalThis as any).FormData || require('form-data');
+        // With depth file, use multipart form data.
+        // Note: React Native provides globalThis.FormData — no polyfill needed.
+        // Do NOT set Content-Type manually: axios/fetch must compute the boundary.
         const formData = new FormData();
         formData.append('file', {
           uri: `data:image/jpeg;base64,${imageBase64}`,
           name: 'image.jpg',
           type: 'image/jpeg',
-        });
+        } as any);
 
-        // Append depth file if provided
         formData.append('depth_file', {
           uri: `file://${depthFilePath}`,
           name: 'depth.png',
           type: 'image/png',
-        });
+        } as any);
 
         const response = await this.client.post(
-          '/api/scan',
+          '/api/scan/depth',
           formData,
           {
             timeout: 60000,
-            headers: {
-              'Content-Type': 'multipart/form-data',
-            },
+            // No Content-Type header — axios adds it with the correct multipart boundary.
+            transformRequest: (data) => data,
           },
         );
 

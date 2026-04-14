@@ -10,7 +10,7 @@ from pathlib import Path
 import csv
 import subprocess
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.core.database import get_db
 from app.core.security import get_current_user
@@ -215,6 +215,79 @@ async def scan(
         stud_grid=stud_grid_response,
         scan_id=str(scan_log.id),
         thumbnail_url=thumbnail_url,
+    )
+
+
+@router.post("/depth", response_model=ScanResponse)
+async def scan_with_depth(
+    file: UploadFile = File(...),
+    depth_file: Optional[UploadFile] = File(None),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ScanResponse:
+    """
+    Scan a LEGO piece from a multipart upload that may include LiDAR depth data.
+
+    Unlike POST /api/scan (base64 JSON), this endpoint accepts multipart file
+    uploads so the iOS DepthCaptureModule can send the raw depth map alongside
+    the RGB frame without base64 bloat.
+
+    Response shape matches POST /api/scan so the mobile client needs no branching.
+    Depth bytes are currently read-but-not-used — reserved for future 3D matching
+    via the DGX Spark vision server.
+    """
+    if Image is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Image processing not available",
+        )
+
+    # Read + validate RGB image
+    try:
+        image_bytes = await file.read()
+        if not image_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Empty image file",
+            )
+        Image.open(BytesIO(image_bytes)).convert("RGB")  # Validate decodability
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning("Failed to load image: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid image file",
+        )
+
+    # Depth is optional — read if present but don't fail if it's malformed.
+    if depth_file is not None:
+        try:
+            _ = await depth_file.read()
+        except Exception as e:
+            logger.debug("Failed to read depth file (non-fatal): %s", e)
+
+    # Run the same ML pipeline as the base64 endpoint.
+    try:
+        predictions = await ml_predict(image_bytes) or []
+    except Exception as e:
+        logger.error("ML inference failed", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Detection service unavailable",
+        )
+
+    return ScanResponse(
+        predictions=[
+            ScanPrediction(
+                part_num=p.get("part_num", "unknown"),
+                part_name=p.get("part_name", ""),
+                color_name=p.get("color_name"),
+                color_hex=p.get("color_hex"),
+                confidence=p.get("confidence", 0.0),
+            )
+            for p in predictions
+        ],
     )
 
 
@@ -639,7 +712,7 @@ async def trigger_retrain(
             "status": "triggered",
             "feedback_count": feedback_csv.get("count", 0),
             "csv_path": str(feedback_csv.get("path", "")),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         # Optionally trigger SSH to ML server
@@ -656,7 +729,7 @@ async def trigger_retrain(
         return {
             "status": "error",
             "message": str(e),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
 
@@ -695,7 +768,7 @@ async def _export_feedback_to_csv(db: AsyncSession) -> dict:
         export_dir = Path(settings.DATA_DIR or "/tmp") / "feedback_exports"
         export_dir.mkdir(parents=True, exist_ok=True)
 
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         csv_path = export_dir / f"feedback_corrections_{timestamp}.csv"
 
         with open(csv_path, 'w', newline='', encoding='utf-8') as f:
@@ -778,7 +851,7 @@ async def _trigger_ssh_retrain(csv_path: Optional[str]) -> Optional[dict]:
         ssh_cmd.append(remote_cmd)
 
         # Trigger async (don't wait for completion)
-        job_id = f"retrain_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+        job_id = f"retrain_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
 
         logger.info(f"Triggering SSH retrain on {ml_host}: {remote_cmd}")
 

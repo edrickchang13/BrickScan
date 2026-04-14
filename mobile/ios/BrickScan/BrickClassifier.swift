@@ -68,7 +68,7 @@ class BrickClassifier {
                 let colorProbs = softmax(colorArray)
 
                 // Get top-K part predictions
-                var topIndices = partProbs.enumerated()
+                let topIndices = partProbs.enumerated()
                     .map { ($0.offset, $0.element) }
                     .sorted { $0.1 > $1.1 }
                     .prefix(topK)
@@ -131,9 +131,14 @@ class BrickClassifier {
     }
 
     private func softmax(_ logits: [Float]) -> [Float] {
+        guard !logits.isEmpty else { return [] }
         let maxLogit = logits.max() ?? 0
         let expLogits = logits.map { exp($0 - maxLogit) }
         let sum = expLogits.reduce(0, +)
+        // Guard against divide-by-zero / NaN if all logits are -inf or array is degenerate.
+        guard sum > 0, sum.isFinite else {
+            return [Float](repeating: 0, count: logits.count)
+        }
         return expLogits.map { $0 / sum }
     }
 }
@@ -161,8 +166,10 @@ extension UIImage {
             return nil
         }
 
-        CVPixelBufferLockBaseAddress(pixelBuffer, .readAndWrite)
-        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readAndWrite) }
+        // CVPixelBufferLockFlags has only `.readOnly`. For read-write access,
+        // pass an empty option set (== default behavior, writable).
+        CVPixelBufferLockBaseAddress(pixelBuffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
 
         guard let context = CGContext(
             data: CVPixelBufferGetBaseAddress(pixelBuffer),
@@ -176,7 +183,11 @@ extension UIImage {
             return nil
         }
 
-        context.draw(self.cgImage!, in: CGRect(origin: .zero, size: self.size))
+        guard let cgImage = self.cgImage else {
+            // UIImage can be backed by CIImage (e.g. filtered images); no CGImage available.
+            return nil
+        }
+        context.draw(cgImage, in: CGRect(origin: .zero, size: self.size))
 
         return pixelBuffer
     }
@@ -193,9 +204,17 @@ extension MLMultiArray {
 
 // MARK: - BrickClassifierInput
 
+// NOTE: MLFeatureProvider is a class-only (NSObjectProtocol) protocol, so this
+// must be a `class`, not a `struct`. Marking as `final` to keep the lightweight
+// value-type intent.
 @available(iOS 16.0, *)
-struct BrickClassifierInput: MLFeatureProvider {
+final class BrickClassifierInput: NSObject, MLFeatureProvider {
     let image: CVPixelBuffer
+
+    init(image: CVPixelBuffer) {
+        self.image = image
+        super.init()
+    }
 
     var featureNames: Set<String> {
         return ["image"]

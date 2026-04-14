@@ -415,14 +415,24 @@ async def get_recent_parts(
 
         recent_scans = result.fetchall()
 
-        # Enrich with part details
+        # Was N+1 (one Part query per scan row); now batch-loads all Parts in
+        # a single WHERE part_num IN (...) query. InventoryItem/SetPart have no
+        # ORM relationship to Part (only FK columns), and Scan.prediction is a
+        # raw part_num string — so batching by IN is the right fit here rather
+        # than selectinload().
+        part_nums = [row[0] for row in recent_scans if row[0] is not None]
+        parts_by_num: dict[str, Part] = {}
+        if part_nums:
+            parts_result = await db.execute(
+                select(Part).where(Part.part_num.in_(part_nums))
+            )
+            parts_by_num = {p.part_num: p for p in parts_result.scalars().all()}
+
+        # Enrich with part details (preserves original response order/shape)
         parts = []
         for part_num, last_scanned, scan_count in recent_scans:
-            part_result = await db.execute(
-                select(Part).where(Part.part_num == part_num)
-            )
-            part = part_result.scalar_one_or_none()
-
+            part = parts_by_num.get(part_num)
+            # Defensive: skip orphaned predictions whose Part no longer exists
             if part:
                 parts.append(
                     {

@@ -113,18 +113,33 @@ async def get_set(
         if theme:
             theme_name = theme.name
 
+    # Was N+1 (2 queries per set_part — one for Part, one for Color); now
+    # batch-loads all Parts and Colors in two queries total via WHERE id IN (...).
+    # SetPart has no ORM relationship to Part/Color (only FK columns), so we
+    # can't use selectinload() here without adding relationships (out of scope).
+    part_ids = {sp.part_id for sp in lego_set.parts}
+    color_ids = {sp.color_id for sp in lego_set.parts}
+
+    parts_by_id: dict = {}
+    if part_ids:
+        parts_result = await db.execute(
+            select(Part).where(Part.id.in_(part_ids))
+        )
+        parts_by_id = {p.id: p for p in parts_result.scalars().all()}
+
+    colors_by_id: dict = {}
+    if color_ids:
+        colors_result = await db.execute(
+            select(Color).where(Color.id.in_(color_ids))
+        )
+        colors_by_id = {c.id: c for c in colors_result.scalars().all()}
+
     parts_data = []
     for set_part in lego_set.parts:
-        part_result = await db.execute(
-            select(Part).where(Part.id == set_part.part_id)
-        )
-        part = part_result.scalars().first()
+        part = parts_by_id.get(set_part.part_id)
+        color = colors_by_id.get(set_part.color_id)
 
-        color_result = await db.execute(
-            select(Color).where(Color.id == set_part.color_id)
-        )
-        color = color_result.scalars().first()
-
+        # Defensive: skip orphaned set_parts whose Part/Color no longer exist
         if part and color:
             parts_data.append(
                 SetPartSchema(

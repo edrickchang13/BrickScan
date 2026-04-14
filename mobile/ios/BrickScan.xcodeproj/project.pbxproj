@@ -7,12 +7,16 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		05145D9884B0021A39C9C93C /* DepthCaptureModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 6FFCF72A89DBD5E77454AB7A /* DepthCaptureModule.m */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
+		9393826D3DF8E59B79514830 /* DepthCaptureModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB97A0D03B5B3827EBA2D7A6 /* DepthCaptureModule.swift */; };
 		96905EF65AED1B983A6B3ABC /* libPods-BrickScan.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 58EEBF8E8E6FB1BC6CAF49B5 /* libPods-BrickScan.a */; };
 		B18059E884C0ABDD17F3DC3D /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC715A2D49A985799AEE119 /* ExpoModulesProvider.swift */; };
 		B512435B5DD810FF15E0A958 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 3F443B8F89D8B529CC6C2A9D /* PrivacyInfo.xcprivacy */; };
+		B5714D8DBC1B2A91354E676B /* MetroHostResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BD20617DF5F94E9A044867C /* MetroHostResolver.swift */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
+		C4AA20A925CD2E32A0556E3D /* BrickClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D6370340E05EED5D9A36CC7 /* BrickClassifier.swift */; };
 		D64893A54DD4459D8358E2F8 /* noop-file.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86742196E8FD4DF7AD773CFF /* noop-file.swift */; };
 		DCFB97D9CBE06348F59AF434 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 557856F79269B1B51DB8FB5F /* AppDelegate.swift */; };
 /* End PBXBuildFile section */
@@ -628,14 +632,18 @@
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = BrickScan/Info.plist; sourceTree = "<group>"; };
 		3F443B8F89D8B529CC6C2A9D /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = BrickScan/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = Pods.xcodeproj; path = Pods/Pods.xcodeproj; sourceTree = "<group>"; };
+		4D6370340E05EED5D9A36CC7 /* BrickClassifier.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BrickClassifier.swift; path = BrickScan/BrickClassifier.swift; sourceTree = "<group>"; };
 		557856F79269B1B51DB8FB5F /* AppDelegate.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = BrickScan/AppDelegate.swift; sourceTree = "<group>"; };
 		58EEBF8E8E6FB1BC6CAF49B5 /* libPods-BrickScan.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-BrickScan.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		6BD20617DF5F94E9A044867C /* MetroHostResolver.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = MetroHostResolver.swift; path = BrickScan/MetroHostResolver.swift; sourceTree = "<group>"; };
 		6C2E3173556A471DD304B334 /* Pods-BrickScan.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-BrickScan.debug.xcconfig"; path = "Target Support Files/Pods-BrickScan/Pods-BrickScan.debug.xcconfig"; sourceTree = "<group>"; };
+		6FFCF72A89DBD5E77454AB7A /* DepthCaptureModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = DepthCaptureModule.m; sourceTree = "<group>"; };
 		7A4D352CD337FB3A3BF06240 /* Pods-BrickScan.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-BrickScan.release.xcconfig"; path = "Target Support Files/Pods-BrickScan/Pods-BrickScan.release.xcconfig"; sourceTree = "<group>"; };
 		80A575A1F1624623807A3B3F /* BrickScan-Bridging-Header.h */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.c.h; name = "BrickScan-Bridging-Header.h"; path = "BrickScan/BrickScan-Bridging-Header.h"; sourceTree = "<group>"; };
 		86742196E8FD4DF7AD773CFF /* noop-file.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = "noop-file.swift"; path = "BrickScan/noop-file.swift"; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = BrickScan/SplashScreen.storyboard; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
+		DB97A0D03B5B3827EBA2D7A6 /* DepthCaptureModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DepthCaptureModule.swift; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		FAC715A2D49A985799AEE119 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-BrickScan/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -663,6 +671,8 @@
 				80A575A1F1624623807A3B3F /* BrickScan-Bridging-Header.h */,
 				3F443B8F89D8B529CC6C2A9D /* PrivacyInfo.xcprivacy */,
 				557856F79269B1B51DB8FB5F /* AppDelegate.swift */,
+				4D6370340E05EED5D9A36CC7 /* BrickClassifier.swift */,
+				6BD20617DF5F94E9A044867C /* MetroHostResolver.swift */,
 			);
 			name = BrickScan;
 			sourceTree = "<group>";
@@ -674,6 +684,16 @@
 				58EEBF8E8E6FB1BC6CAF49B5 /* libPods-BrickScan.a */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		51DB628A7DC4085293DB201C /* DepthCapture */ = {
+			isa = PBXGroup;
+			children = (
+				DB97A0D03B5B3827EBA2D7A6 /* DepthCaptureModule.swift */,
+				6FFCF72A89DBD5E77454AB7A /* DepthCaptureModule.m */,
+			);
+			name = DepthCapture;
+			path = DepthCapture;
 			sourceTree = "<group>";
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
@@ -693,6 +713,7 @@
 				D65327D7A22EEC0BE12398D9 /* Pods */,
 				D7E4C46ADA2E9064B798F356 /* ExpoModulesProviders */,
 				48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */,
+				51DB628A7DC4085293DB201C /* DepthCapture */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -1637,6 +1658,10 @@
 				B18059E884C0ABDD17F3DC3D /* ExpoModulesProvider.swift in Sources */,
 				D64893A54DD4459D8358E2F8 /* noop-file.swift in Sources */,
 				DCFB97D9CBE06348F59AF434 /* AppDelegate.swift in Sources */,
+				C4AA20A925CD2E32A0556E3D /* BrickClassifier.swift in Sources */,
+				B5714D8DBC1B2A91354E676B /* MetroHostResolver.swift in Sources */,
+				9393826D3DF8E59B79514830 /* DepthCaptureModule.swift in Sources */,
+				05145D9884B0021A39C9C93C /* DepthCaptureModule.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1679,6 +1704,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.edrickchang.brickscan;
 				PRODUCT_NAME = BrickScan;
 				SWIFT_OBJC_BRIDGING_HEADER = "BrickScan/BrickScan-Bridging-Header.h";
+				SWIFT_OBJC_INTERFACE_HEADER_NAME = "BrickScan-Swift.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -1709,6 +1735,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.edrickchang.brickscan;
 				PRODUCT_NAME = BrickScan;
 				SWIFT_OBJC_BRIDGING_HEADER = "BrickScan/BrickScan-Bridging-Header.h";
+				SWIFT_OBJC_INTERFACE_HEADER_NAME = "BrickScan-Swift.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 				VERSIONING_SYSTEM = "apple-generic";

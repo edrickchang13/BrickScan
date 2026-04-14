@@ -58,6 +58,17 @@ export function parseCsvToInventory(
 
     const values = parseCsvLine(line);
 
+    // Defensive: if the row has fewer columns than the header expected, we end up
+    // with undefined at some index. `.trim()` on undefined would throw — `?.` guards
+    // that, but then we silently skip the row. Log when we do.
+    const maxIdx = Math.max(partNumIndex, colorNameIndex, quantityIndex);
+    if (values.length <= maxIdx) {
+      if (__DEV__) {
+        console.warn(`[csvUtils] Row ${i} has ${values.length} columns, expected at least ${maxIdx + 1}; skipping.`);
+      }
+      continue;
+    }
+
     const partNum = values[partNumIndex]?.trim();
     const colorName = values[colorNameIndex]?.trim();
     const quantityStr = values[quantityIndex]?.trim();

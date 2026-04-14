@@ -9,19 +9,34 @@ type RuntimeEnv = {
 };
 
 export function getApiBaseUrl(): string {
+  // PRIORITY 1 (dev): use Metro's current scriptURL host so the API auto-follows
+  // whatever IP Metro is serving on (USB link-local, WiFi, etc.).
   if (__DEV__) {
     const scriptURL = NativeModules.SourceCode?.scriptURL as string | undefined;
     if (scriptURL) {
       try {
         const host = new URL(scriptURL).hostname;
-        return `http://${host}:8000`;
-      } catch {
-        // Fall through to env/default handling below.
+        const url = `http://${host}:8000`;
+        console.log('[Config] API_BASE_URL (from Metro scriptURL):', url);
+        return url;
+      } catch (e) {
+        console.warn('[Config] Metro scriptURL parse failed:', scriptURL, e);
       }
+    } else {
+      console.warn('[Config] NativeModules.SourceCode.scriptURL is empty — falling back to EXPO_PUBLIC_API_URL');
     }
   }
 
-  return (globalThis as RuntimeEnv).process?.env?.EXPO_PUBLIC_API_URL || DEFAULT_API_BASE_URL;
+  // PRIORITY 2: explicit env override (set in .env.local).
+  const envUrl = (globalThis as RuntimeEnv).process?.env?.EXPO_PUBLIC_API_URL;
+  if (envUrl) {
+    if (__DEV__) console.log('[Config] API_BASE_URL (from EXPO_PUBLIC_API_URL):', envUrl);
+    return envUrl;
+  }
+
+  // PRIORITY 3: fallback — only reachable on simulator.
+  if (__DEV__) console.warn('[Config] Falling back to localhost — scan will fail on physical device');
+  return DEFAULT_API_BASE_URL;
 }
 
 export const Config = {

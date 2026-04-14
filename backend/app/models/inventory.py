@@ -27,6 +27,13 @@ class InventoryItem(Base):
         nullable=False,
     )
 
+    # Forward relationships — lets selectinload() eager-load Part and Color so
+    # the inventory endpoints don't issue 2*N queries per request.
+    # No back_populates on Part/Color — intentional, simpler, no need for
+    # Part.inventory_items or Color.inventory_items collections.
+    part = relationship("Part", lazy="select")
+    color = relationship("Color", lazy="select")
+
 
 class ScanLog(Base):
     __tablename__ = "scan_logs"

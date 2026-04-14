@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 from app.core.security import get_current_user
@@ -191,7 +191,7 @@ async def add_to_wishlist(
         wishlist_item = Wishlist(
             user_id=current_user.id,
             set_num=set_num,
-            added_at=datetime.utcnow(),
+            added_at=datetime.now(timezone.utc),
         )
         db.add(wishlist_item)
         await db.commit()
