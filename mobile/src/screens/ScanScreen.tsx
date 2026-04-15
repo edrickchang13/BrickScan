@@ -6,7 +6,8 @@ import {
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { apiClient } from '@/services/api';
+import { apiClient, ScanProgressEvent } from '@/services/api';
+import { ScanProgress, friendlyStageLabel } from '@/components/ScanProgress';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system/legacy';
 import { isDepthAvailable, captureRGBD } from '@/services/depthCapture';
@@ -58,6 +59,12 @@ export const ScanScreen: React.FC<Props> = ({ navigation }) => {
   const [permission, requestPermission] = useCameraPermissions();
   const [isLoading, setIsLoading] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState('');
+  // Streaming scan progress (driven by SSE from /api/scan/stream/{id})
+  const [scanPercent, setScanPercent] = useState<number>(0);
+  const [scanStageLabel, setScanStageLabel] = useState<string>('');
+  const [scanPartial, setScanPartial] = useState<{
+    partNum: string; partName?: string; confidence: number; source?: string
+  } | undefined>(undefined);
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [currentSession, setCurrentSession] = useState<ScanSession | null>(null);
   const [showSessionModal, setShowSessionModal] = useState(false);
@@ -218,11 +225,16 @@ export const ScanScreen: React.FC<Props> = ({ navigation }) => {
     }
     setIsLoading(true);
     setLoadingStatus('Capturing image…');
+    setScanPercent(0);
+    setScanStageLabel('Capturing image…');
+    setScanPartial(undefined);
     try {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.6 });
       if (!photo?.uri) throw new Error('Failed to capture image');
 
       setLoadingStatus('Processing…');
+      setScanStageLabel('Preparing image…');
+      setScanPercent(2);
       const manipulated = await ImageManipulator.manipulateAsync(
         photo.uri,
         [{ resize: { width: 512, height: 512 } }],
@@ -238,10 +250,25 @@ export const ScanScreen: React.FC<Props> = ({ navigation }) => {
       // (a) start consuming depth as a 4th channel in the ML pipeline, and
       // (b) switch to AVCaptureMultiCamSession or pause the viewfinder before
       // capture. See project plan Phase D.
-      const depthFilePath: string | undefined = undefined;
 
       setLoadingStatus('Identifying piece…');
-      const result = await apiClient.scanImage(base64, depthFilePath);
+      setScanStageLabel('Sending to backend…');
+      setScanPercent(5);
+      const onProgress = (event: ScanProgressEvent) => {
+        if (event.percent >= 0) setScanPercent(event.percent);
+        setScanStageLabel(friendlyStageLabel(event.stage, event.message));
+        setLoadingStatus(friendlyStageLabel(event.stage, event.message));
+        const top = event.partial?.predictions?.[0];
+        if (top) {
+          setScanPartial({
+            partNum: top.part_num,
+            partName: top.part_name,
+            confidence: top.confidence,
+            source: top.source,
+          });
+        }
+      };
+      const result = await apiClient.scanWithProgress(base64, onProgress);
       if (result.predictions?.length > 0) {
         const topPrediction = result.predictions[0];
         const resultData = {
@@ -964,7 +991,11 @@ export const ScanScreen: React.FC<Props> = ({ navigation }) => {
               <Ionicons name="sparkles" size={20} color={C.red} />
               <Text style={styles.loadingCardTitle}>AI Processing</Text>
             </View>
-            <Text style={styles.loadingCardStatus}>{loadingStatus || 'Analyzing…'}</Text>
+            <ScanProgress
+              percent={scanPercent}
+              stageLabel={scanStageLabel || loadingStatus || 'Analyzing…'}
+              topPrediction={scanPartial}
+            />
             {scanMode === 'video' && framesCaptured > 0 && (
               <View style={styles.loadingFrameRow}>
                 {Array.from({ length: 6 }).map((_, i) => (

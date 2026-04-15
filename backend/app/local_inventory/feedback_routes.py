@@ -19,24 +19,34 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import csv
 import io
+import json
 import logging
 import os
-from collections import Counter
+from collections import Counter, defaultdict
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.local_inventory.database import get_local_db
-from app.local_inventory.models import ScanFeedback as ScanFeedbackModel
+from app.local_inventory.models import (
+    ScanFeedback as ScanFeedbackModel,
+    FeedbackEvalSnapshot as FeedbackEvalSnapshotModel,
+)
 from app.local_inventory.schemas_feedback import (
+    AccuracyTrendPoint,
     FeedbackConfusionPair,
+    FeedbackSnapshotResponse,
     FeedbackStats,
     ScanFeedback,
     ScanFeedbackResponse,
+    SourceStats,
 )
 
 # Runtime imports from schemas.py (readable by the server process)
@@ -71,12 +81,23 @@ async def submit_scan_feedback(
     Accept a user correction and persist it for active learning.
 
     - If correct_part_num != predicted_part_num AND image_base64 is provided,
-      saves a labelled JPEG to data/feedback_images/<correct_part_num>/<scan_id>.jpg
-    - Sets will_improve_model=True when a new labelled image was saved
+      saves a labelled JPEG to data/feedback_images/<correct_part_num>/<scan_id>.jpg.
+    - v2 clients send `feedback_type`, `correct_rank`, `predictions_shown`, and
+      `time_to_confirm_ms`. When absent (legacy client), feedback_type is
+      derived heuristically from part_num comparison and correct_rank is None.
+    - Sets `will_improve_model=true` when a new labelled image was saved.
     """
     is_correction = (
         request.correct_part_num.strip().lower()
         != request.predicted_part_num.strip().lower()
+    )
+
+    # Derive feedback_type if the client didn't send one (legacy path).
+    feedback_type = request.feedback_type or _derive_feedback_type(
+        predicted=request.predicted_part_num,
+        correct=request.correct_part_num,
+        correct_color_id=request.correct_color_id,
+        shown=request.predictions_shown,
     )
 
     image_path: str | None = None
@@ -103,6 +124,16 @@ async def submit_scan_feedback(
             logger.warning("Failed to save feedback image: %s", e)
             # Don't fail the whole request — continue without image
 
+    predictions_shown_json: Optional[str] = None
+    if request.predictions_shown:
+        try:
+            predictions_shown_json = json.dumps(
+                [p.model_dump() for p in request.predictions_shown],
+                separators=(",", ":"),
+            )
+        except Exception as e:
+            logger.warning("Failed to serialise predictions_shown: %s", e)
+
     # Persist to DB
     record = ScanFeedbackModel(
         scan_id=request.scan_id,
@@ -113,17 +144,22 @@ async def submit_scan_feedback(
         confidence=request.confidence,
         source=request.source,
         used_for_training=False,
+        feedback_type=feedback_type,
+        correct_rank=request.correct_rank,
+        predictions_shown_json=predictions_shown_json,
+        time_to_confirm_ms=request.time_to_confirm_ms,
     )
     db.add(record)
     db.commit()
     db.refresh(record)
 
     logger.info(
-        "Feedback saved: scan_id=%s  %s→%s  correction=%s",
+        "Feedback saved: scan_id=%s  %s→%s  type=%s  rank=%s",
         request.scan_id,
         request.predicted_part_num,
         request.correct_part_num,
-        is_correction,
+        feedback_type,
+        request.correct_rank,
     )
 
     return ScanFeedbackResponse(
@@ -133,22 +169,55 @@ async def submit_scan_feedback(
     )
 
 
+def _derive_feedback_type(
+    predicted: str,
+    correct: str,
+    correct_color_id: Optional[str],
+    shown: Optional[list],
+) -> str:
+    """
+    Fallback classifier for legacy clients that don't send feedback_type.
+
+    Order of checks:
+      1. Same part_num + color given → partially_correct (only colour changed)
+      2. Same part_num (no color diff signal) → top_correct
+      3. Different part_num, and the correct one appears in the shown top-5 → alternative_correct
+      4. Different part_num, not in shown list → none_correct
+    """
+    pred_norm = predicted.strip().lower()
+    corr_norm = correct.strip().lower()
+
+    if pred_norm == corr_norm:
+        return "partially_correct" if correct_color_id else "top_correct"
+
+    if shown:
+        for entry in shown:
+            part_num = getattr(entry, "part_num", None) if not isinstance(entry, dict) else entry.get("part_num")
+            if part_num and str(part_num).strip().lower() == corr_norm:
+                return "alternative_correct"
+    return "none_correct"
+
+
 # ── GET /feedback/stats ───────────────────────────────────────────────────────
 
 @feedback_router.get("/feedback/stats", response_model=FeedbackStats)
 async def get_feedback_stats(db: Session = Depends(get_local_db)) -> FeedbackStats:
     """
-    Return aggregate statistics for the active-learning feedback collection.
+    Return aggregate statistics for the active-learning feedback collection,
+    including v2 accuracy metrics (top-1, top-3, by_source, accuracy_trend).
+
+    Legacy fields (total_corrections, agreement_count, …) are preserved so
+    any older client consuming this endpoint keeps working.
     """
     all_feedback = db.query(ScanFeedbackModel).all()
 
+    # ── Legacy confusion / correction counts ──────────────────────────────────
     corrections = [
         f for f in all_feedback
         if f.correct_part_num.strip().lower() != f.predicted_part_num.strip().lower()
     ]
     agreements = len(all_feedback) - len(corrections)
 
-    # Top 10 confused pairs
     pair_counter: Counter = Counter()
     for f in corrections:
         pair_counter[(f.predicted_part_num, f.correct_part_num)] += 1
@@ -161,7 +230,6 @@ async def get_feedback_stats(db: Session = Depends(get_local_db)) -> FeedbackSta
         for (pred, correct), cnt in pair_counter.most_common(10)
     ]
 
-    # Count saved images and parts covered
     images_saved = sum(1 for f in corrections if f.image_path is not None)
     parts_with_feedback = len({f.correct_part_num for f in corrections if f.image_path})
 
@@ -172,6 +240,29 @@ async def get_feedback_stats(db: Session = Depends(get_local_db)) -> FeedbackSta
         or 0
     )
 
+    # ── v2: rolling 30-day accuracy + per-source + trend ──────────────────────
+    window_cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+    recent = [f for f in all_feedback if f.timestamp and f.timestamp >= window_cutoff]
+    top1_acc, top3_acc = _compute_topn_accuracy(recent)
+    by_source = _compute_by_source(recent)
+
+    # Trend = last 8 snapshots, most-recent last (for chart sorting)
+    snapshots = (
+        db.query(FeedbackEvalSnapshotModel)
+        .order_by(FeedbackEvalSnapshotModel.snapshot_date.desc())
+        .limit(8)
+        .all()
+    )
+    accuracy_trend = [
+        AccuracyTrendPoint(
+            week_ending=s.snapshot_date.date().isoformat(),
+            top1_accuracy=s.top1_accuracy,
+            top3_accuracy=s.top3_accuracy,
+            sample_size=s.sample_size,
+        )
+        for s in reversed(snapshots)
+    ]
+
     return FeedbackStats(
         total_corrections=len(corrections),
         agreement_count=agreements,
@@ -179,6 +270,182 @@ async def get_feedback_stats(db: Session = Depends(get_local_db)) -> FeedbackSta
         parts_with_feedback=parts_with_feedback,
         images_saved=images_saved,
         pending_training=int(pending_training),
+        top1_accuracy=top1_acc,
+        top3_accuracy=top3_acc,
+        by_source=by_source,
+        accuracy_trend=accuracy_trend,
+    )
+
+
+def _compute_topn_accuracy(rows: List[ScanFeedbackModel]) -> tuple[float, float]:
+    """
+    Compute top-1 and top-3 accuracy over the given feedback rows.
+
+    Rules:
+      top-1 correct: feedback_type == 'top_correct' OR 'partially_correct'
+                     (brick identity was right, even if colour was off)
+      top-3 correct: top-1 OR (feedback_type == 'alternative_correct' AND correct_rank <= 2)
+
+    Rows without feedback_type (legacy) are included but only contribute to
+    top-1 when predicted == correct.
+    """
+    if not rows:
+        return (0.0, 0.0)
+    top1 = 0
+    top3 = 0
+    for r in rows:
+        ft = r.feedback_type
+        if ft in ("top_correct", "partially_correct"):
+            top1 += 1
+            top3 += 1
+        elif ft == "alternative_correct":
+            if r.correct_rank is not None and r.correct_rank <= 2:
+                top3 += 1
+        elif ft is None:
+            # Legacy row
+            if r.predicted_part_num.strip().lower() == r.correct_part_num.strip().lower():
+                top1 += 1
+                top3 += 1
+    return (top1 / len(rows), top3 / len(rows))
+
+
+def _compute_by_source(rows: List[ScanFeedbackModel]) -> List[SourceStats]:
+    """Count correct vs. wrong by `source` field (which model made the top prediction)."""
+    buckets: Dict[str, Dict[str, int]] = defaultdict(lambda: {"count": 0, "correct": 0})
+    for r in rows:
+        src = (r.source or "unknown").strip().lower() or "unknown"
+        buckets[src]["count"] += 1
+        ft = r.feedback_type
+        if ft in ("top_correct", "partially_correct"):
+            buckets[src]["correct"] += 1
+        elif ft is None and r.predicted_part_num.strip().lower() == r.correct_part_num.strip().lower():
+            buckets[src]["correct"] += 1
+    return [
+        SourceStats(
+            source=src,
+            count=data["count"],
+            correct=data["correct"],
+            accuracy=(data["correct"] / data["count"]) if data["count"] else 0.0,
+        )
+        for src, data in sorted(buckets.items(), key=lambda kv: kv[1]["count"], reverse=True)
+    ]
+
+
+# ── GET /feedback/export.csv ──────────────────────────────────────────────────
+
+@feedback_router.get("/feedback/export.csv")
+async def export_feedback_csv(
+    include_used: bool = False,
+    db: Session = Depends(get_local_db),
+) -> Response:
+    """
+    Stream all corrections not yet used for training as a CSV ready for
+    `ml/retrain_from_feedback.py`.
+
+    Columns: image_path, correct_part_num, correct_color_id, original_prediction,
+             source, confidence, timestamp, scan_id, feedback_type, correct_rank
+
+    Query params:
+      include_used=true  — also include rows where used_for_training=True
+                           (useful for full-history audits; default false)
+    """
+    query = db.query(ScanFeedbackModel).filter(
+        ScanFeedbackModel.image_path.isnot(None)  # can't train without an image
+    )
+    if not include_used:
+        query = query.filter(ScanFeedbackModel.used_for_training == False)  # noqa: E712
+
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=[
+        "image_path", "correct_part_num", "correct_color_id",
+        "original_prediction", "source", "confidence",
+        "timestamp", "scan_id", "feedback_type", "correct_rank",
+    ])
+    writer.writeheader()
+    count = 0
+    for r in query.yield_per(500):
+        writer.writerow({
+            "image_path":          r.image_path,
+            "correct_part_num":    r.correct_part_num,
+            "correct_color_id":    r.correct_color_id or "",
+            "original_prediction": r.predicted_part_num,
+            "source":              r.source,
+            "confidence":          f"{r.confidence:.4f}",
+            "timestamp":           r.timestamp.isoformat() if r.timestamp else "",
+            "scan_id":             r.scan_id,
+            "feedback_type":       r.feedback_type or "",
+            "correct_rank":        r.correct_rank if r.correct_rank is not None else "",
+        })
+        count += 1
+    logger.info("Feedback CSV export: %d rows", count)
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="feedback_export_{datetime.now(timezone.utc):%Y%m%d_%H%M%S}.csv"',
+        "X-Row-Count": str(count),
+    }
+    return Response(content=buf.getvalue(), media_type="text/csv", headers=headers)
+
+
+# ── POST /feedback/snapshot ───────────────────────────────────────────────────
+
+@feedback_router.post("/feedback/snapshot", response_model=FeedbackSnapshotResponse)
+async def create_feedback_snapshot(
+    window_days: int = 30,
+    db: Session = Depends(get_local_db),
+) -> FeedbackSnapshotResponse:
+    """
+    Freeze the current accuracy window as a weekly datapoint. Idempotent per
+    date — running twice on the same day replaces the existing row.
+
+    The FeedbackStatsScreen trend chart plots these.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
+    rows = (
+        db.query(ScanFeedbackModel)
+        .filter(ScanFeedbackModel.timestamp >= cutoff)
+        .all()
+    )
+    top1, top3 = _compute_topn_accuracy(rows)
+    by_src = _compute_by_source(rows)
+    by_src_dict = {s.source: {"count": s.count, "correct": s.correct, "accuracy": s.accuracy} for s in by_src}
+
+    # Upsert by date (one snapshot per day max)
+    today = datetime.now(timezone.utc).date()
+    existing = (
+        db.query(FeedbackEvalSnapshotModel)
+        .filter(func.date(FeedbackEvalSnapshotModel.snapshot_date) == today)
+        .first()
+    )
+    if existing:
+        existing.top1_accuracy = top1
+        existing.top3_accuracy = top3
+        existing.by_source_json = json.dumps(by_src_dict, separators=(",", ":"))
+        existing.sample_size = len(rows)
+        existing.window_days = window_days
+        existing.snapshot_date = datetime.now(timezone.utc)
+        record = existing
+    else:
+        record = FeedbackEvalSnapshotModel(
+            top1_accuracy=top1,
+            top3_accuracy=top3,
+            by_source_json=json.dumps(by_src_dict, separators=(",", ":")),
+            sample_size=len(rows),
+            window_days=window_days,
+        )
+        db.add(record)
+    db.commit()
+    db.refresh(record)
+
+    logger.info(
+        "Snapshot created: date=%s  top1=%.2f  top3=%.2f  n=%d",
+        record.snapshot_date.date(), top1, top3, len(rows),
+    )
+    return FeedbackSnapshotResponse(
+        snapshot_date=record.snapshot_date.isoformat(),
+        top1_accuracy=top1,
+        top3_accuracy=top3,
+        sample_size=len(rows),
+        by_source=by_src_dict,
     )
 
 

@@ -303,3 +303,51 @@ async def predict(image_bytes: bytes) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error("ML inference error: %s", e)
         return []
+
+
+async def predict_with_tta(image_bytes: bytes, rotations: int = 4) -> List[Dict[str, Any]]:
+    """
+    Test-time augmentation: run `predict()` on N rotations of the input image
+    and average softmax confidences per part_num. Returns top-3 stabilised
+    predictions in the same shape as `predict()`.
+
+    Falls back to a single `predict()` call if PIL fails or rotations < 2.
+    """
+    if rotations < 2:
+        return await predict(image_bytes)
+
+    try:
+        base = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    except Exception as e:
+        logger.warning("TTA: failed to decode source image: %s — falling back to plain predict", e)
+        return await predict(image_bytes)
+
+    angles = [int(i * (360 / rotations)) for i in range(rotations)]
+    aggregate: Dict[str, Dict[str, Any]] = {}
+
+    for angle in angles:
+        rotated = base if angle == 0 else base.rotate(angle, expand=True, resample=Image.Resampling.BICUBIC)
+        buf = io.BytesIO()
+        rotated.save(buf, format="JPEG", quality=90)
+        preds = await predict(buf.getvalue())
+        if not preds:
+            continue
+        for p in preds:
+            pn = p.get("part_num", "")
+            if not pn or pn.startswith("unknown"):
+                continue
+            slot = aggregate.setdefault(pn, {**p, "confidence": 0.0, "_count": 0})
+            slot["confidence"] += float(p.get("confidence", 0.0))
+            slot["_count"] += 1
+            if not slot.get("part_name") and p.get("part_name"):
+                slot["part_name"] = p["part_name"]
+
+    if not aggregate:
+        return []
+
+    for slot in aggregate.values():
+        slot["confidence"] = slot["confidence"] / max(1, slot["_count"])
+        slot.pop("_count", None)
+
+    ranked = sorted(aggregate.values(), key=lambda x: x.get("confidence", 0), reverse=True)
+    return ranked[:3]

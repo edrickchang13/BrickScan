@@ -117,9 +117,60 @@ class ScanFeedback(Base):
     # False until this record is exported into a training dataset
     used_for_training = Column(Boolean, nullable=False, default=False, index=True)
 
+    # Three-way feedback typing. NULL = legacy row written before v2 schema.
+    #   top_correct         — user tapped "yes, top pick is right"  (rank 0)
+    #   alternative_correct — user tapped a non-top prediction      (rank 1..N)
+    #   none_correct        — user typed a correct_part_num that wasn't shown (rank -1)
+    #   partially_correct   — right brick, wrong colour             (rank 0, color diff)
+    feedback_type = Column(String(30), nullable=True, index=True)
+
+    # Position of the correct answer in the top-5 that was shown.
+    # 0 = top pick, 1..N = alternative, -1 = wasn't in the list.
+    correct_rank = Column(Integer, nullable=True, index=True)
+
+    # Full top-5 serialised at feedback time so we can compute top-N accuracy
+    # and per-source accuracy later without re-running inference.
+    predictions_shown_json = Column(Text, nullable=True)
+
+    # UX telemetry: how long the user deliberated before tapping a choice.
+    time_to_confirm_ms = Column(Integer, nullable=True)
+
     timestamp = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
         index=True,
     )
+
+
+class FeedbackEvalSnapshot(Base):
+    """
+    Weekly frozen accuracy snapshot. One row per run of POST /feedback/snapshot.
+
+    Powers the "model has improved from 62% → 78%" trend chart on the
+    FeedbackStatsScreen. Computed from the rolling window of ScanFeedback
+    rows at snapshot time.
+    """
+
+    __tablename__ = "feedback_eval_snapshots"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    snapshot_date = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+        index=True,
+    )
+
+    # Top-1 = top pick was correct; Top-3 = correct answer was in shown top-3.
+    top1_accuracy = Column(Float, nullable=False)
+    top3_accuracy = Column(Float, nullable=False)
+
+    # JSON: {"brickognize": {"count": 42, "accuracy": 0.78}, "gemini": {...}, ...}
+    by_source_json = Column(Text, nullable=True)
+
+    # How many feedback rows fed this snapshot (for confidence intervals)
+    sample_size = Column(Integer, nullable=False, default=0)
+
+    # The window end — snapshots look back N days from this.
+    window_days = Column(Integer, nullable=False, default=30)
