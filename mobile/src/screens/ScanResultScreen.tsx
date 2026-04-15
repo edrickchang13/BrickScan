@@ -12,6 +12,7 @@ import type { ScanStackParamList } from '@/types';
 import { C, R, S, shadow } from '@/constants/theme';
 import { FeedbackRow } from '@/components/FeedbackRow';
 import { SubstituteSuggestions } from '@/components/SubstituteSuggestions';
+import { submitAlternativeFeedback, type PredictionShown } from '@/services/feedbackApi';
 
 type Props = NativeStackScreenProps<ScanStackParamList, 'ScanResultScreen'>;
 
@@ -34,10 +35,54 @@ export const ScanResultScreen: React.FC<Props> = ({ route, navigation }) => {
   const scanId = React.useRef(
     `scan_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
   ).current;
+  const scanStartMs = React.useRef(Date.now()).current;
+  // Tracks which alternative (if any) the user has already submitted as correct.
+  // Prevents double-feedback if the user taps several alts in succession while exploring.
+  const [confirmedAltRank, setConfirmedAltRank] = useState<number | null>(null);
 
   const addItem = useInventoryStore((state) => state.addItem);
   const selected = predictions[selectedIndex];
   const isLowConfidence = selected.confidence < 0.25;
+
+  // Snapshot of the top-5 predictions in the v2 feedback shape. Sent to the
+  // backend so it can compute per-source accuracy and confusion pairs later.
+  const predictionsShown: PredictionShown[] = React.useMemo(
+    () => predictions.slice(0, 5).map(p => ({
+      partNum: p.partNum,
+      partName: p.partName,
+      confidence: p.confidence,
+      source: (p as any).source,
+      colorId: p.colorId,
+      colorHex: p.colorHex,
+    })),
+    [predictions],
+  );
+
+  // Handler for tapping an alternative row — selects it to view AND (first time only)
+  // submits alternative_correct feedback. Cheap signal: if the user is exploring
+  // alternatives, they're almost always indicating the model's top pick was wrong.
+  const handleAlternativeTap = useCallback(async (idx: number) => {
+    setSelectedIndex(idx);
+    setImageError(false);
+    if (idx === 0 || confirmedAltRank !== null) return;
+    try {
+      const top = predictions[0];
+      const chosen = predictions[idx];
+      await submitAlternativeFeedback({
+        scanId,
+        predictedPartNum: top.partNum,
+        predictedConfidence: top.confidence,
+        predictedSource: (top as any).source ?? 'unknown',
+        chosen: { partNum: chosen.partNum, partName: chosen.partName },
+        chosenRank: idx,
+        predictionsShown,
+        timeToConfirmMs: Date.now() - scanStartMs,
+      });
+      setConfirmedAltRank(idx);
+    } catch {
+      // Silent — the alt is still selected for viewing; they can retry via FeedbackRow if they want.
+    }
+  }, [predictions, scanId, predictionsShown, scanStartMs, confirmedAltRank]);
 
   // Save the top prediction to scan history as soon as this screen loads
   useEffect(() => {
@@ -196,22 +241,27 @@ export const ScanResultScreen: React.FC<Props> = ({ route, navigation }) => {
         {/* Substitute suggestions */}
         <SubstituteSuggestions partNum={selected.partNum} />
 
-        {/* Alternative matches */}
-        {/* Feedback row */}
+        {/* Feedback row — 3-way "is this right?" UI */}
         <FeedbackRow
           scanId={scanId}
-          predictedPartNum={selected.partNum}
-          confidence={selected.confidence}
-          source={(selected as any).source}
-          colorId={selected.colorId}
+          predictedPartNum={predictions[0].partNum}
+          confidence={predictions[0].confidence}
+          source={(predictions[0] as any).source ?? 'unknown'}
+          colorId={predictions[0].colorId}
+          predictionsShown={predictionsShown}
+          scanStartMs={scanStartMs}
         />
+
+        {/* Alternative matches — tap to both view AND report "it's actually this one" */}
         {predictions.length > 1 && (
           <>
             <Text style={styles.sectionLabel}>OTHER POSSIBILITIES</Text>
+            <Text style={styles.sectionHint}>Tap one if it's the correct brick.</Text>
             <View style={styles.altCard}>
               {predictions.slice(1, 4).map((item, i) => {
                 const idx = i + 1;
                 const pct = Math.round(item.confidence * 100);
+                const isConfirmed = confirmedAltRank === idx;
                 return (
                   <TouchableOpacity
                     key={idx}
@@ -219,9 +269,11 @@ export const ScanResultScreen: React.FC<Props> = ({ route, navigation }) => {
                       styles.altRow,
                       i < predictions.slice(1, 4).length - 1 && styles.altRowBorder,
                       selectedIndex === idx && styles.altRowSelected,
+                      isConfirmed && styles.altRowConfirmed,
                     ]}
-                    onPress={() => { setSelectedIndex(idx); setImageError(false); }}
+                    onPress={() => handleAlternativeTap(idx)}
                     activeOpacity={0.75}
+                    disabled={isConfirmed}
                   >
                     <AltImage imageUrl={item.imageUrl} />
                     <View style={styles.altInfo}>
@@ -229,8 +281,20 @@ export const ScanResultScreen: React.FC<Props> = ({ route, navigation }) => {
                       <Text style={styles.altPartNum}>#{item.partNum}</Text>
                     </View>
                     <View style={styles.altRight}>
-                      <Text style={styles.altPct}>{pct}%</Text>
-                      {selectedIndex === idx && <Ionicons name="checkmark-circle" size={16} color={C.red} style={{ marginTop: 2 }} />}
+                      {isConfirmed
+                        ? (
+                          <View style={styles.altConfirmedPill}>
+                            <Ionicons name="checkmark-circle" size={14} color={C.green} />
+                            <Text style={styles.altConfirmedText}>Saved</Text>
+                          </View>
+                        )
+                        : (
+                          <>
+                            <Text style={styles.altPct}>{pct}%</Text>
+                            {selectedIndex === idx && <Ionicons name="checkmark-circle" size={16} color={C.red} style={{ marginTop: 2 }} />}
+                          </>
+                        )
+                      }
                     </View>
                   </TouchableOpacity>
                 );
@@ -379,6 +443,9 @@ const styles = StyleSheet.create({
     fontSize: 11, fontWeight: '700', color: C.textMuted,
     letterSpacing: 0.8, paddingHorizontal: 2,
   },
+  sectionHint: {
+    fontSize: 12, color: C.textSub, paddingHorizontal: 2, marginTop: 2, marginBottom: 6,
+  },
   altCard: {
     backgroundColor: C.white, borderRadius: R.xl, overflow: 'hidden', ...shadow(1),
   },
@@ -387,6 +454,7 @@ const styles = StyleSheet.create({
   },
   altRowBorder: { borderBottomWidth: 1, borderBottomColor: C.border },
   altRowSelected: { backgroundColor: '#FFF5F5' },
+  altRowConfirmed: { backgroundColor: '#ECFDF5' },
   altImg: { width: 48, height: 48, borderRadius: 8 },
   altImgPlaceholder: { backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center' },
   altInfo: { flex: 1 },
@@ -394,6 +462,13 @@ const styles = StyleSheet.create({
   altPartNum: { fontSize: 11, color: C.textMuted, marginTop: 2 },
   altRight: { alignItems: 'flex-end' },
   altPct: { fontSize: 13, fontWeight: '700', color: C.textSub },
+  altConfirmedPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 999,
+  },
+  altConfirmedText: { fontSize: 11, fontWeight: '700', color: C.green },
 
   // Buttons
   primaryBtn: {

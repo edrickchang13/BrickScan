@@ -225,6 +225,7 @@ export type ScanStackParamList = {
     colorHex?: string;
     confidence?: number;
   };
+  FeedbackStatsScreen: undefined;
 };
 
 export type SetsStackParamList = {
