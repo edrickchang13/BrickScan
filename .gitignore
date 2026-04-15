@@ -127,7 +127,9 @@ ml/data/ldraw/
 # (~500 classes, 268k+ PNG renders, 5.8 GB); Nature 2023 corpus is ~40 GB
 # under ml/data/nature_2023/. Neither should ever enter git.
 ml/data/synthetic_dataset
-ml/data/nature_2023/
+ml/data/nature_2023/*
+!ml/data/nature_2023/README.md
+!ml/data/nature_2023/.gitkeep
 ml/data/renders/
 ml/data/test_renders/
 ml/data/training_data/

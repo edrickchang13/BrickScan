@@ -1,0 +1,19 @@
+# YOLOv8 dataset config for the Nature 2023 bounding-box detection set.
+# Consumed by ml/train_yolo.py via `--data ml/data/nature_lego.yaml`.
+#
+# Paths are relative to this file's directory. After running
+# `python3 ml/data/download_nature_2023.py --priority real`, the
+# images/labels subdirs get populated automatically (VOC XML → YOLO txt
+# conversion happens inside the downloader).
+#
+# Single class — we localise brick boxes; the brick *identity* is
+# determined by the downstream classifier (contrastive k-NN /
+# distilled MobileNet) applied to each cropped box.
+
+path: nature_2023/detection          # dataset root (relative to this yaml)
+train: images                         # train images (relative to `path`)
+val:   images                         # val = train for now; split later when we have more
+test:  images                         # test = train; same caveat
+
+names:
+  0: lego_piece
