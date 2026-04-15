@@ -386,6 +386,86 @@ async def export_feedback_csv(
     return Response(content=buf.getvalue(), media_type="text/csv", headers=headers)
 
 
+# ── GET /feedback/eval-set.json ───────────────────────────────────────────────
+
+@feedback_router.get("/feedback/eval-set.json")
+async def export_eval_set(
+    limit: int = 500,
+    include_used: bool = False,
+    db: Session = Depends(get_local_db),
+) -> Response:
+    """
+    Return the most recent N ScanFeedback rows with ground-truth labels as JSON,
+    for programmatic evaluation via `ml/scripts/eval_against_feedback.py`.
+
+    Only rows where:
+      - feedback_type IN ('top_correct', 'alternative_correct', 'none_correct')
+      - image_path IS NOT NULL
+
+    `partially_correct` is excluded because the user confirmed the part
+    identity was right (only the colour was wrong) — that row isn't useful
+    signal for a part-classification eval.
+
+    Shape of each element:
+      {
+        "image_path":           "...",
+        "correct_part_num":     "3001",
+        "correct_color_id":     "4",
+        "original_prediction":  "3002",
+        "source":               "brickognize",
+        "confidence":           0.73,
+        "timestamp":            "2026-04-15T00:32:01Z",
+        "scan_id":              "scan_...",
+        "feedback_type":        "alternative_correct",
+        "correct_rank":         1,
+        "predictions_shown":    [{...}, ...] | null
+      }
+    """
+    valid_types = ("top_correct", "alternative_correct", "none_correct")
+    query = (
+        db.query(ScanFeedbackModel)
+        .filter(ScanFeedbackModel.image_path.isnot(None))
+        .filter(ScanFeedbackModel.feedback_type.in_(valid_types))
+    )
+    if not include_used:
+        query = query.filter(ScanFeedbackModel.used_for_training == False)  # noqa: E712
+    # Apply ordering + limit AFTER all filters (SQLAlchemy rejects filter
+    # after limit/offset is materialised).
+    query = query.order_by(ScanFeedbackModel.timestamp.desc()).limit(max(1, min(limit, 5000)))
+
+    rows = []
+    for r in query.all():
+        predictions_shown = None
+        if r.predictions_shown_json:
+            try:
+                import json as _json
+                predictions_shown = _json.loads(r.predictions_shown_json)
+            except Exception:
+                predictions_shown = None
+        rows.append({
+            "image_path":          r.image_path,
+            "correct_part_num":    r.correct_part_num,
+            "correct_color_id":    r.correct_color_id,
+            "original_prediction": r.predicted_part_num,
+            "source":              r.source,
+            "confidence":          round(float(r.confidence), 4) if r.confidence is not None else None,
+            "timestamp":           r.timestamp.isoformat() if r.timestamp else None,
+            "scan_id":             r.scan_id,
+            "feedback_type":       r.feedback_type,
+            "correct_rank":        r.correct_rank,
+            "predictions_shown":   predictions_shown,
+        })
+    logger.info("Eval-set export: %d rows (limit=%d)", len(rows), limit)
+
+    import json as _json
+    headers = {"X-Row-Count": str(len(rows))}
+    return Response(
+        content=_json.dumps(rows, separators=(",", ":")),
+        media_type="application/json",
+        headers=headers,
+    )
+
+
 # ── POST /feedback/snapshot ───────────────────────────────────────────────────
 
 @feedback_router.post("/feedback/snapshot", response_model=FeedbackSnapshotResponse)
