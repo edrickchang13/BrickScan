@@ -35,6 +35,25 @@ parser.add_argument('--num-lights',type=int, default=5,   help='Lighting presets
 parser.add_argument('--num-zooms', type=int, default=3,   help='Zoom levels (default 3)')
 parser.add_argument('--resolution',type=int, default=224, help='Output image size in px (default 224)')
 parser.add_argument('--color',     type=str, default='4', help='LDraw color ID (default 4=red)')
+parser.add_argument('--elevation-mode',
+                    choices=['fixed', 'hemisphere'],
+                    default='fixed',
+                    help=(
+                        'Camera elevation. "fixed" = 30° (legacy default, '
+                        'reproducible). "hemisphere" = uniform random over the '
+                        'upper hemisphere (elevation 10°-85°, azimuth 0°-360°). '
+                        'Use hemisphere for training data — the fixed 30° '
+                        'under-represents top-down and oblique shots common in '
+                        'phone scans.'
+                    ))
+parser.add_argument('--aggressive-aug',
+                    action='store_true',
+                    help=(
+                        'Enable aggressive domain randomisation for training '
+                        'data: adds Gaussian noise, random JPEG re-compression, '
+                        'and an extra random-position light to each render. '
+                        'Disabled by default to keep legacy renders reproducible.'
+                    ))
 args = parser.parse_args(argv)
 
 
@@ -228,10 +247,16 @@ def center_and_normalize(obj):
     return diameter
 
 
-def setup_camera(diameter, zoom_level):
+def setup_camera(diameter, zoom_level, elevation_mode='fixed', rng=None):
     """
     Add a camera pointing at origin.
+
     zoom_level: 0=far(full part), 1=medium, 2=close-up
+    elevation_mode:
+        'fixed'      — legacy default: 30° elevation, fixed azimuth
+        'hemisphere' — uniform random elevation 10°-85°, azimuth 0°-360°
+                       (closes the sim-to-real gap — real scans come from many angles)
+    rng: random.Random (used in hemisphere mode; falls back to random module).
     """
     distances = [diameter * 3.5, diameter * 2.5, diameter * 1.8]
     dist = distances[zoom_level % len(distances)]
@@ -240,11 +265,27 @@ def setup_camera(diameter, zoom_level):
     cam_obj  = bpy.data.objects.new('Camera', cam_data)
     bpy.context.scene.collection.objects.link(cam_obj)
 
-    # 30° elevation, looking down at the part
-    elevation = math.radians(30)
-    cam_obj.location = (dist * math.cos(elevation),
-                        -dist * math.cos(elevation),
-                         dist * math.sin(elevation))
+    import random as _rand
+    r = rng or _rand
+
+    if elevation_mode == 'hemisphere':
+        # Uniform on the upper hemisphere: area-preserving sample via
+        # elevation = acos(u) where u ∈ [cos(max_elev), cos(min_elev)].
+        # Clip to [10°, 85°] to skip degenerate top-down / edge-grazing shots.
+        elevation = math.acos(r.uniform(math.cos(math.radians(85)),
+                                        math.cos(math.radians(10))))
+        azimuth   = r.uniform(0, 2 * math.pi)
+        cam_x = dist * math.sin(elevation) * math.cos(azimuth)
+        cam_y = dist * math.sin(elevation) * math.sin(azimuth)
+        cam_z = dist * math.cos(elevation)
+    else:
+        # Legacy: 30° elevation, fixed azimuth (matches pre-upgrade output byte-for-byte).
+        elevation = math.radians(30)
+        cam_x =  dist * math.cos(elevation)
+        cam_y = -dist * math.cos(elevation)
+        cam_z =  dist * math.sin(elevation)
+
+    cam_obj.location = (cam_x, cam_y, cam_z)
     # Point at origin
     direction = Vector((0, 0, 0)) - cam_obj.location
     rot_quat  = direction.to_track_quat('-Z', 'Y')
@@ -253,6 +294,65 @@ def setup_camera(diameter, zoom_level):
     cam_data.lens = 50
     bpy.context.scene.camera = cam_obj
     return cam_obj
+
+
+def add_random_fill_light(diameter, rng):
+    """
+    Extra hemisphere-positioned light for aggressive domain randomisation.
+    Returns the created light object so the caller can remove it.
+    Only used when --aggressive-aug is set.
+    """
+    light_data = bpy.data.lights.new(name='RandomFill', type='AREA')
+    light_data.energy = rng.uniform(200, 900)
+    light_data.shadow_soft_size = diameter * rng.uniform(0.5, 1.5)
+
+    d = diameter * 5
+    elevation = math.radians(rng.uniform(10, 80))
+    azimuth   = rng.uniform(0, 2 * math.pi)
+    loc = (
+        d * math.sin(elevation) * math.cos(azimuth),
+        d * math.sin(elevation) * math.sin(azimuth),
+        d * math.cos(elevation),
+    )
+    light_obj = bpy.data.objects.new('RandomFill', light_data)
+    light_obj.location = loc
+    direction = Vector((0, 0, 0)) - Vector(loc)
+    light_obj.rotation_euler = direction.to_track_quat('-Z', 'Y').to_euler()
+    bpy.context.scene.collection.objects.link(light_obj)
+    return light_obj
+
+
+def apply_post_render_aug(filepath: Path, rng):
+    """
+    Apply PIL-based post-render augmentations to an already-written PNG:
+      - Gaussian noise (~σ=3 on 8-bit channels)
+      - Random JPEG re-compression at quality 60-90 to simulate phone compression,
+        then re-saved as PNG so downstream pipelines don't trip.
+    No-op if PIL isn't importable (headless Blender sometimes lacks it).
+    """
+    try:
+        from PIL import Image
+        import numpy as np
+    except ImportError:
+        return  # Silent skip — aggressive-aug is a bonus, not required
+
+    try:
+        img = Image.open(filepath).convert('RGB')
+        arr = np.asarray(img, dtype=np.int16)
+        sigma = rng.uniform(1.5, 4.0)
+        noise = np.random.normal(0, sigma, arr.shape)
+        arr = np.clip(arr + noise, 0, 255).astype(np.uint8)
+        img = Image.fromarray(arr)
+
+        # JPEG → PNG round-trip (simulates phone capture artifacts)
+        import io
+        buf = io.BytesIO()
+        img.save(buf, format='JPEG', quality=int(rng.uniform(60, 90)))
+        buf.seek(0)
+        Image.open(buf).save(filepath, format='PNG')
+    except Exception as e:
+        # Aggressive-aug failures shouldn't break the whole render run
+        print(f"[aggressive-aug] Skipped on {filepath.name}: {e}")
 
 
 def setup_three_point_lighting(diameter, preset_idx, rng):
@@ -389,11 +489,17 @@ def main():
                 # Fresh lighting + camera each frame to avoid stale transforms
                 remove_lights_and_camera()
                 setup_three_point_lighting(diameter, light_idx, rng)
-                setup_camera(diameter, zoom_idx)
+                if args.aggressive_aug:
+                    add_random_fill_light(diameter, rng)
+                setup_camera(diameter, zoom_idx,
+                             elevation_mode=args.elevation_mode, rng=rng)
 
                 bpy.context.scene.render.filepath = str(filepath)
                 bpy.ops.render.render(write_still=True)
                 rendered += 1
+
+                if args.aggressive_aug:
+                    apply_post_render_aug(filepath, rng)
 
                 if rendered % 20 == 0:
                     print(f"[blender_render] {rendered}/{total - skipped} rendered, {skipped} skipped")

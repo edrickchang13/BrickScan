@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "backend",
+      "runtimeExecutable": "docker-compose",
+      "runtimeArgs": ["up", "backend"],
+      "port": 8000
+    },
+    {
+      "name": "metro",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "mobile", "run", "dev"],
+      "port": 8081
+    }
+  ]
+}

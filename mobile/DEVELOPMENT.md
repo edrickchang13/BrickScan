@@ -228,3 +228,44 @@ User taps shutter
 ```
 
 Average scan latency: 5–8 seconds.
+
+---
+
+## Milestone checkpoint: ML data pipeline + feedback flywheel (2026-04-15)
+
+Pre-positioned for the next training run:
+
+- **Synthetic render corpus** — `ml/data/synthetic_dataset` (symlink to
+  `~/Desktop/synthetic_dataset`, ~500 LEGO parts × 540 renders, 5.8 GB).
+  Matches `train_contrastive.py`'s class-folder layout out of the box.
+- **Nature 2023 real-photo corpus** — downloadable via
+  `./backend/venv/bin/python3 ml/data/download_nature_2023.py`.
+  Provides the ~52k real photos (closes sim-to-real gap) and the
+  PASCAL-VOC → YOLO bounding-box set for detector training.
+- **Renderer upgrades** — `ml/blender/blender_render.py` now accepts
+  `--elevation-mode hemisphere` (uniform camera sampling on upper hemisphere
+  instead of the old fixed 30°) and `--aggressive-aug` (Gaussian noise +
+  JPEG artifact pass + extra random-position light per frame). The
+  domain-randomisation variant `blender_render_dr.py` is also present for
+  higher-quality runs with HDRI backgrounds and material jitter.
+- **LDraw colour palette** — `ml/blender/ldraw_colors.py` fallback expanded
+  from 15 → all 38 official LEGO solid colours.
+- **MOG2 multi-piece detector** — `backend/app/ml/multipiece_detector.py`
+  now tries MOG2 background subtraction first (faster + more accurate on
+  stable scan backgrounds), falls through to the legacy HSV detector.
+- **Feedback flywheel** — three-way feedback UI
+  (top-correct / pick-alternative / none-of-these / wrong-colour), CSV
+  export at `/api/local-inventory/feedback/export.csv`, weekly accuracy
+  snapshots, in-app FeedbackStatsScreen.
+- **Dry-run validation** — `bash ml/scripts/smoke_retrain_dry_run.sh`
+  exercises the retrain pipeline locally without training anything. Backed
+  by `backend/tests/test_retrain_dry_run.py`.
+- **Full data layout docs** — `ml/data/README.md` is the source of truth
+  for what's on disk + regenerate commands.
+
+**When DGX Spark is back up**, the single command remains:
+```bash
+bash ~/Desktop/spark_wait_and_relaunch.sh
+```
+All staged work lands as trained weights in `backend/models/` and lights up
+the local cascade automatically.

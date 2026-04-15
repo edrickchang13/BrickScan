@@ -751,13 +751,16 @@ async def _maybe_detect_multipiece(image_bytes: bytes) -> List[PieceDetection]:
     """
     try:
         from app.ml.model_manager import ModelManager
-        from app.ml.multipiece_detector import detect_pieces_cv
+        from app.ml.multipiece_detector import detect_pieces
 
         mm = ModelManager.get()
         boxes = mm.detect_pieces(image_bytes) if mm.yolo_available else []
         detector_name = "yolo"
         if not boxes:
-            boxes = detect_pieces_cv(image_bytes)
+            # Dispatcher: tries MOG2 (faster + more accurate on stable backgrounds)
+            # first, falls through to HSV. Keeps the public "opencv" detector_name
+            # for mobile-side rendering; MOG2 vs HSV distinction is backend-only.
+            boxes = detect_pieces(image_bytes)
             detector_name = "opencv"
         if len(boxes) < 2:
             return []  # single-piece: legacy `predictions` already covers this
