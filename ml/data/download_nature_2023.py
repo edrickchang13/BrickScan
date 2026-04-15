@@ -337,14 +337,49 @@ def run(dest: Path, priority: str, datasets: List[NatureDataset]) -> int:
         log.info("Dataset: %s — %s", ds.name, ds.description)
         log.info("Page:    %s", ds.page_url)
 
+        target_dir = dest / ds.target_subdir
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        # 1. Check for a pre-placed zip (user downloaded it manually via a browser
+        #    because mostwiedzy.pl serves a JS-challenge interstitial that plain
+        #    requests can't pass). Any *.zip in the target dir works.
+        pre_placed = sorted(target_dir.glob("*.zip"))
+        if pre_placed:
+            zip_path = pre_placed[0]
+            log.info("Found pre-placed zip: %s (%.1f MB)",
+                     zip_path.name, zip_path.stat().st_size / 1e6)
+            if not extract_archive(zip_path, target_dir):
+                failures += 1
+                continue
+            if ds.target_subdir == "detection":
+                convert_voc_to_yolo(target_dir)
+            manifest[ds.name] = {
+                "url": "pre-placed",
+                "zip_path": str(zip_path),
+                "target_dir": str(target_dir),
+            }
+            manifest_path.write_text(json.dumps(manifest, indent=2))
+            continue
+
+        # 2. Try auto-discovery of the zip URL from the dataset page.
         zip_url = manifest.get(ds.name, {}).get("url") or discover_zip_url(ds.page_url, session)
-        if not zip_url:
-            log.error("Skipping %s — could not discover zip URL. Download manually from the page above.", ds.name)
+        if not zip_url or zip_url == "pre-placed":
+            log.error(
+                "Skipping %s — no pre-placed zip and could not auto-discover URL.\n"
+                "  MANUAL DOWNLOAD STEPS:\n"
+                "    1. Open this URL in Safari (clicks through the JS challenge):\n"
+                "       %s\n"
+                "    2. Click the 'Download' button on the page.\n"
+                "    3. Move the downloaded .zip into:\n"
+                "       %s/\n"
+                "    4. Re-run this script — it'll detect the zip and extract it.",
+                ds.name, ds.page_url, target_dir,
+            )
             failures += 1
             continue
 
         zip_name = Path(urlparse(zip_url).path).name or f"{ds.name}.zip"
-        zip_path = dest / ds.target_subdir / zip_name
+        zip_path = target_dir / zip_name
 
         if not zip_path.exists():
             ok = download_with_resume(zip_url, zip_path, session)
@@ -354,7 +389,6 @@ def run(dest: Path, priority: str, datasets: List[NatureDataset]) -> int:
         else:
             log.info("Already downloaded: %s", zip_path.name)
 
-        target_dir = dest / ds.target_subdir
         if not extract_archive(zip_path, target_dir):
             failures += 1
             continue
