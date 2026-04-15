@@ -142,3 +142,20 @@ ml/data/catalog_image_cache/
 ml/data/eval_results/
 ml/data/models/
 ml/blender/hdris
+
+# …but track the one canonical model bundle the backend loads at startup
+# (everything else stays excluded). Small enough (8 MB total) to version.
+!backend/models/lego_classifier.onnx
+!backend/models/lego_classifier.onnx.data
+
+# Trained-model local state — not committed
+backend/models/*.mystery_backup
+# Duplicate of lego_classifier.onnx.data — the ONNX graph has this
+# filename baked in internally, so it's needed at runtime, but it's
+# regenerable via `cp lego_classifier.onnx.data mobilenetv3_lego.onnx.data`.
+backend/models/mobilenetv3_lego.onnx.data
+# Emitted by ml/scripts/calibrate_temperatures.py — regenerable from feedback DB
+backend/data/calibration_temperatures.json
+# Emitted by ml/scripts/precompute_clip_catalog.py — regenerable in ~1 min
+backend/data/embeddings_cache.pkl
+backend/data/embeddings_cache.misses.txt
