@@ -1,0 +1,59 @@
+# 50 most-common LEGO parts for the DR render pilot.
+# One part number per line. Lines starting with # are ignored.
+#
+# Source: curated from Brickset's 2023 most-used-part analysis + LEGO's
+# standard building system essentials. These are the parts that matter
+# most because they're in nearly every set a user would be cataloguing.
+#
+# Used by ml/scripts/render_dr_pilot.sh
+3001
+3002
+3003
+3004
+3005
+3009
+3010
+3020
+3021
+3022
+3023
+3024
+3025
+3030
+3031
+3032
+3033
+3034
+3035
+3039
+3040
+3062b
+3068b
+3069b
+3070b
+3665
+3660
+3700
+3701
+3710
+3795
+3957
+3958
+4073
+4274
+4286
+4477
+4519
+6091
+6141
+6536
+87079
+2412b
+2877
+3626c
+3815
+3816
+3817
+3818
+3819
+15068

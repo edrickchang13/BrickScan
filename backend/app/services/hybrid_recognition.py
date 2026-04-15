@@ -47,9 +47,81 @@ KNN_DISTANCE_THRESHOLD = 0.30
 #
 #   SCAN_TTA_ENABLED=true        # 4-rotation TTA over local ONNX (legacy model)
 #   SCAN_ALWAYS_RUN_GEMINI=true  # run Gemini even when Brickognize is confident
+#   SCAN_GROUNDED_GEMINI=true    # feed Brickognize top-3 into Gemini as candidates
+#                                # (converts open-set classification to disambiguation;
+#                                #  forces BG -> Gemini serial chain when BG is uncertain)
+#   SCAN_COLLAPSE_VARIANTS=true  # dedupe mold/print variants via part_num regex
+#                                # (3001a → 3001, 3001pr0001 → 3001, etc.)
+#   SCAN_COLOR_RERANK=true       # downweight candidates whose color_hex disagrees
+#                                # with the scan's dominant colour
 TTA_ENABLED            = os.environ.get("SCAN_TTA_ENABLED", "false").lower() == "true"
 ALWAYS_RUN_GEMINI      = os.environ.get("SCAN_ALWAYS_RUN_GEMINI", "false").lower() == "true"
+GROUNDED_GEMINI        = os.environ.get("SCAN_GROUNDED_GEMINI", "false").lower() == "true"
+COLLAPSE_VARIANTS      = os.environ.get("SCAN_COLLAPSE_VARIANTS", "false").lower() == "true"
+COLOR_RERANK           = os.environ.get("SCAN_COLOR_RERANK", "false").lower() == "true"
+# SCAN_USE_CALIBRATION — apply per-source temperature scaling fit by
+# ml/scripts/calibrate_temperatures.py. Reads /app/data/calibration_temperatures.json
+# (mounted from backend/data). No-op when the file is absent or a source
+# is missing from the map — falls back to T=1.0 (no scaling).
+USE_CALIBRATION        = os.environ.get("SCAN_USE_CALIBRATION", "false").lower() == "true"
 TTA_TRIGGER_CONFIDENCE = 0.70  # only invoke TTA when top prediction is below this
+
+# Calibration cache — loaded once on first use, never reloaded in-process.
+# To pick up a fresh calibration file, restart the backend. Small price
+# to pay for avoiding a filesystem check on every scan.
+_CALIBRATION_CACHE: Optional[Dict[str, float]] = None
+
+
+def _load_calibration() -> Dict[str, float]:
+    """Lazy-load the calibration JSON. Returns {"default": 1.0} if absent."""
+    global _CALIBRATION_CACHE
+    if _CALIBRATION_CACHE is not None:
+        return _CALIBRATION_CACHE
+    # Calibration JSON lives at /app/data/calibration_temperatures.json
+    # (mounted from backend/data/). Resolve via __file__ to stay independent
+    # of the container working directory.
+    from pathlib import Path as _Path
+    import json as _json
+    path = _Path(__file__).resolve().parent.parent.parent / "data" / "calibration_temperatures.json"
+    if not path.exists():
+        _CALIBRATION_CACHE = {"default": 1.0}
+        logger.info("No calibration file at %s — using T=1.0 for all sources", path)
+        return _CALIBRATION_CACHE
+    try:
+        raw = _json.loads(path.read_text())
+        _CALIBRATION_CACHE = {k: float(v) for k, v in raw.items()}
+        logger.info("Loaded calibration temperatures: %s", _CALIBRATION_CACHE)
+    except Exception as e:
+        logger.warning("Calibration file %s unreadable (%s) — using T=1.0", path, e)
+        _CALIBRATION_CACHE = {"default": 1.0}
+    return _CALIBRATION_CACHE
+
+
+def _apply_calibration(predictions: List[Dict]) -> List[Dict]:
+    """
+    Apply per-source temperature scaling to prediction confidences.
+
+    calibrated_conf = raw_conf ** (1 / T)
+      - T > 1: softens overconfident source (e.g. Gemini often reports 0.9+
+        but is wrong 30% of the time → calibrated drops to a sensible 0.6-0.7)
+      - T < 1: sharpens underconfident source
+      - T = 1: identity (default for unknown sources)
+
+    Re-sorts by calibrated confidence. Preserves all other fields.
+    """
+    cal = _load_calibration()
+    out = []
+    for p in predictions:
+        src = (p.get("source") or "unknown").lower()
+        t = cal.get(src, cal.get("default", 1.0))
+        conf = float(p.get("confidence", 0.0) or 0.0)
+        if t != 1.0 and conf > 0:
+            # Clamp to [1e-6, 1-1e-6] to avoid 0^inf / log(0) instability
+            safe = max(min(conf, 1 - 1e-6), 1e-6)
+            conf = safe ** (1.0 / max(t, 1e-3))
+        out.append({**p, "confidence": conf, "_raw_confidence": p.get("confidence")})
+    out.sort(key=lambda x: x.get("confidence", 0), reverse=True)
+    return out
 
 ProgressCb = Optional[Callable[[str, int, str, Optional[Dict[str, Any]]], Awaitable[None]]]
 
@@ -198,7 +270,11 @@ async def hybrid_predict(
     should_run_gemini = ALWAYS_RUN_GEMINI or bg_top_conf < BRICKOGNIZE_HIGH_CONFIDENCE
     if should_run_gemini:
         await _emit(progress_cb, "gemini_start", 45, "Asking Gemini for a second opinion…")
-        gemini_preds = await _safe_gemini(image_bytes)
+        # B1 — grounded Gemini: feed Brickognize's top candidates as disambiguation
+        # context. Converts Gemini's task from "classify vs 10k parts" to "pick
+        # one of these or override". Expected +10-15% on confusable pairs.
+        gemini_candidates = brickognize_preds[:3] if GROUNDED_GEMINI else None
+        gemini_preds = await _safe_gemini(image_bytes, candidates=gemini_candidates)
         gm_top_conf = gemini_preds[0].get("confidence", 0) if gemini_preds else 0
         await _emit(
             progress_cb, "gemini_done", 65,
@@ -232,6 +308,35 @@ async def hybrid_predict(
         except Exception as e:
             logger.warning("TTA stabilisation failed (non-fatal): %s", e)
 
+    # B2 — Mold / variant collapse: dedupe part_num variants ("3001a" == "3001")
+    # so the top-3 displayed to the user doesn't waste slots on the same brick.
+    if COLLAPSE_VARIANTS and merged:
+        from app.services.part_num_normalizer import collapse_predictions
+        before = len(merged)
+        merged = collapse_predictions(merged)
+        if len(merged) != before:
+            logger.info("Variant collapse: %d → %d unique predictions", before, len(merged))
+
+    # B3 — Colour-aware re-rank: extract the scan's dominant colour, downweight
+    # candidates whose declared color_hex disagrees strongly. Doesn't drop —
+    # just penalises, so a confidently-right part doesn't get lost to the
+    # colour heuristic.
+    if COLOR_RERANK and merged:
+        from app.services.color_extractor import (
+            extract_dominant_color,
+            rerank_predictions_by_color,
+        )
+        scan_rgb = extract_dominant_color(image_bytes)
+        if scan_rgb is not None:
+            merged = rerank_predictions_by_color(merged, scan_rgb)
+
+    # Temperature calibration — applied LAST so per-source temperatures act
+    # on the final, merged confidences. This is post-hoc scaling only; it
+    # cannot make a wrong prediction right, but it can prevent Gemini's
+    # habitual 0.9+ confidences from dominating Brickognize's honest 0.7s.
+    if USE_CALIBRATION and merged:
+        merged = _apply_calibration(merged)
+
     if merged:
         top = merged[0]
         logger.info(
@@ -253,9 +358,12 @@ async def _safe_brickognize(image_bytes: bytes) -> List[Dict]:
         return []
 
 
-async def _safe_gemini(image_bytes: bytes) -> List[Dict]:
+async def _safe_gemini(
+    image_bytes: bytes,
+    candidates: Optional[List[Dict]] = None,
+) -> List[Dict]:
     try:
-        return await gemini_predict(image_bytes) or []
+        return await gemini_predict(image_bytes, candidates=candidates) or []
     except Exception as e:
         logger.warning("Gemini failed: %s", e)
         return []

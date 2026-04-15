@@ -121,3 +121,41 @@ mobile/ios/BrickScan/MetroHost.h
 mobile/ios/BrickScan.xcworkspace/xcuserdata/
 /tmp/
 ml/data/ldraw/
+
+# Training data — large, regenerable, lives on disk outside git.
+# The synthetic_dataset is a symlink to ~/Desktop/synthetic_dataset
+# (~500 classes, 268k+ PNG renders, 5.8 GB); Nature 2023 corpus is ~40 GB
+# under ml/data/nature_2023/. Neither should ever enter git.
+ml/data/synthetic_dataset
+ml/data/nature_2023/*
+!ml/data/nature_2023/README.md
+!ml/data/nature_2023/.gitkeep
+ml/data/renders/
+ml/data/test_renders/
+ml/data/training_data/
+ml/data/huggingface_legobricks/
+ml/data/*.zip
+ml/data/*.tar
+ml/data/*.tar.gz
+ml/data/synthetic_dataset_dr_pilot/
+ml/data/catalog_image_cache/
+ml/data/eval_results/
+ml/data/models/
+ml/blender/hdris
+
+# …but track the one canonical model bundle the backend loads at startup
+# (everything else stays excluded). Small enough (8 MB total) to version.
+!backend/models/lego_classifier.onnx
+!backend/models/lego_classifier.onnx.data
+
+# Trained-model local state — not committed
+backend/models/*.mystery_backup
+# Duplicate of lego_classifier.onnx.data — the ONNX graph has this
+# filename baked in internally, so it's needed at runtime, but it's
+# regenerable via `cp lego_classifier.onnx.data mobilenetv3_lego.onnx.data`.
+backend/models/mobilenetv3_lego.onnx.data
+# Emitted by ml/scripts/calibrate_temperatures.py — regenerable from feedback DB
+backend/data/calibration_temperatures.json
+# Emitted by ml/scripts/precompute_clip_catalog.py — regenerable in ~1 min
+backend/data/embeddings_cache.pkl
+backend/data/embeddings_cache.misses.txt

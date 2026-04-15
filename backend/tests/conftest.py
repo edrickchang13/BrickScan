@@ -1,23 +1,40 @@
-"""pytest fixtures for BrickScan backend tests."""
-import pytest
-import pytest_asyncio
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.pool import StaticPool
-from fastapi.testclient import TestClient
-from httpx import AsyncClient
+"""pytest fixtures for BrickScan backend tests.
+
+The FastAPI application lives at ``backend/main.py`` (top-level module), while
+the rest of the code is packaged under ``app/``. We add the backend root to
+``sys.path`` here so that ``import main`` works regardless of where pytest is
+invoked from (container /app, host cwd, editor runner, …).
+"""
+import sys
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
-from app.main import app
-from app.models import Base
-from app.models.user import User
-from app.models.color import Color
-from app.models.part import Part, PartCategory
-from app.models.set import LEGOSet
-from app.models.set_part import SetPart
-from app.models.theme import Theme
-from app.database import get_db
-from app.core.security import hash_password, create_access_token
+# Make ``main`` (backend/main.py) importable before any ``app`` imports.
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent
+if str(_BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_ROOT))
+
+import pytest  # noqa: E402
+import pytest_asyncio  # noqa: E402
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from httpx import AsyncClient  # noqa: E402
+
+from main import app  # noqa: E402
+from app.models import (  # noqa: E402
+    Base,
+    User,
+    Color,
+    Part,
+    PartCategory,
+    LegoSet,
+    Theme,
+    SetPart,
+)
+from app.core.database import get_db  # noqa: E402
+from app.core.security import hash_password, create_access_token  # noqa: E402
 
 
 @pytest_asyncio.fixture
@@ -130,7 +147,7 @@ async def sample_theme(db_session):
 @pytest.fixture
 async def sample_set(db_session, sample_theme, sample_parts, sample_colors):
     """Insert a sample LEGO set with known parts list."""
-    lego_set = LEGOSet(
+    lego_set = LegoSet(
         id=str(uuid.uuid4()),
         set_num="75105",
         name="Millennium Falcon",

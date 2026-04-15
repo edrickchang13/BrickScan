@@ -252,30 +252,62 @@ def load_colors(
         print(f"[ldraw_colors] Loaded {len(colors)} colors from Rebrickable CSV")
         return colors
 
-    # Last resort: minimal hardcoded set with proper linear values
-    print("[ldraw_colors] Warning: using hardcoded color fallback (15 colors only)")
+    # Last resort: hardcoded set with proper linear values
+    print("[ldraw_colors] Warning: using hardcoded color fallback (38 official LDraw colors)")
     return _minimal_fallback_colors()
 
 
 def _minimal_fallback_colors() -> Dict[int, ColorEntry]:
-    """Minimal set of the 15 most common LEGO colors, pre-converted to linear."""
-    # (code, name, hex_srgb)
+    """
+    Official LDraw solid-color palette (38 entries), pre-converted to linear.
+
+    Expanded from 15 → 38 to cover the full set of common LEGO colors seen
+    in real scans. Hex values come from LDConfig.ldr in the LDraw spec —
+    same source `parse_ldconfig()` uses when the file is reachable.
+    When it's NOT reachable (offline / sandbox / first-boot before download)
+    this fallback provides enough coverage for Blender to pick a realistic
+    random color per render.
+    """
+    # (code, name, hex_srgb) — ordered by LDraw code
     _TABLE = [
-        (0,   "Black",       "#05131D"),
-        (1,   "Blue",        "#0055BF"),
-        (2,   "Green",       "#257A3E"),
-        (3,   "Dark Turquoise", "#00838F"),
-        (4,   "Red",         "#C91A09"),
-        (5,   "Dark Pink",   "#C870A0"),
-        (6,   "Brown",       "#583927"),
-        (7,   "Light Gray",  "#9BA19D"),
-        (8,   "Dark Gray",   "#6D6E5C"),
-        (9,   "Light Blue",  "#B4D2E3"),
-        (14,  "Yellow",      "#F2CD37"),
-        (15,  "White",       "#FFFFFF"),
-        (25,  "Orange",      "#FE8A18"),
-        (70,  "Reddish Brown","#582A12"),
-        (71,  "Light Bluish Gray", "#A0A5A9"),
+        (0,   "Black",                  "#05131D"),
+        (1,   "Blue",                   "#0055BF"),
+        (2,   "Green",                  "#257A3E"),
+        (3,   "Dark Turquoise",         "#00838F"),
+        (4,   "Red",                    "#C91A09"),
+        (5,   "Dark Pink",              "#C870A0"),
+        (6,   "Brown",                  "#583927"),
+        (7,   "Light Gray",             "#9BA19D"),
+        (8,   "Dark Gray",              "#6D6E5C"),
+        (9,   "Light Blue",             "#B4D2E3"),
+        (10,  "Bright Green",           "#4B9F4A"),
+        (11,  "Light Turquoise",        "#55A5AF"),
+        (12,  "Salmon",                 "#F2705E"),
+        (13,  "Pink",                   "#FC97AC"),
+        (14,  "Yellow",                 "#F2CD37"),
+        (15,  "White",                  "#FFFFFF"),
+        (17,  "Light Green",            "#C2DAB8"),
+        (18,  "Light Yellow",           "#FBE696"),
+        (19,  "Tan",                    "#E4CD9E"),
+        (20,  "Light Violet",           "#C9CAE2"),
+        (22,  "Purple",                 "#81007B"),
+        (23,  "Dark Blue-Violet",       "#2032B0"),
+        (25,  "Orange",                 "#FE8A18"),
+        (26,  "Magenta",                "#923978"),
+        (27,  "Lime",                   "#BBE90B"),
+        (28,  "Dark Tan",               "#958A73"),
+        (29,  "Bright Pink",            "#E4ADC8"),
+        (30,  "Medium Lavender",        "#AC78BA"),
+        (31,  "Lavender",               "#E1D5ED"),
+        (69,  "Dark Purple",            "#3F3691"),
+        (70,  "Reddish Brown",          "#582A12"),
+        (71,  "Light Bluish Gray",      "#A0A5A9"),
+        (72,  "Dark Bluish Gray",       "#6C6E68"),
+        (73,  "Medium Blue",            "#5A93DB"),
+        (74,  "Medium Green",           "#73DCA1"),
+        (77,  "Light Pink",             "#FECCCF"),
+        (78,  "Light Flesh",            "#F6D7B3"),
+        (84,  "Medium Dark Flesh",      "#CC702A"),
     ]
     colors = {}
     for code, name, hex_val in _TABLE:

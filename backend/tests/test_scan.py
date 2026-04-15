@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
-from app.main import app
+from main import app  # backend/main.py — conftest puts backend root on sys.path
 from app.core.database import get_db, Base
 from app.models.user import User
 from app.models.scan import Scan

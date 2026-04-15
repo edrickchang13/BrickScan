@@ -1,0 +1,14 @@
+{
+  "model": "mobilenet_v3_small",
+  "heads": ["parts"],
+  "input_size": 224,
+  "num_classes": 502,
+  "val_top1": 0.9053,
+  "val_top3": 0.9867,
+  "trained_at": "2026-04-15",
+  "source": "ml/scripts/train_mobilenetv3_local.py",
+  "dataset": "synthetic_dataset (500 classes, 150 imgs/class)",
+  "epochs": 3,
+  "architecture": "MobileNetV3-Small (torchvision ImageNet-pretrained)",
+  "notes": "Replaces the earlier unverified ONNX. Provenance: trained end-to-end on this Mac from the local synthetic corpus."
+}
