@@ -59,7 +59,69 @@ ALWAYS_RUN_GEMINI      = os.environ.get("SCAN_ALWAYS_RUN_GEMINI", "false").lower
 GROUNDED_GEMINI        = os.environ.get("SCAN_GROUNDED_GEMINI", "false").lower() == "true"
 COLLAPSE_VARIANTS      = os.environ.get("SCAN_COLLAPSE_VARIANTS", "false").lower() == "true"
 COLOR_RERANK           = os.environ.get("SCAN_COLOR_RERANK", "false").lower() == "true"
+# SCAN_USE_CALIBRATION — apply per-source temperature scaling fit by
+# ml/scripts/calibrate_temperatures.py. Reads /app/data/calibration_temperatures.json
+# (mounted from backend/data). No-op when the file is absent or a source
+# is missing from the map — falls back to T=1.0 (no scaling).
+USE_CALIBRATION        = os.environ.get("SCAN_USE_CALIBRATION", "false").lower() == "true"
 TTA_TRIGGER_CONFIDENCE = 0.70  # only invoke TTA when top prediction is below this
+
+# Calibration cache — loaded once on first use, never reloaded in-process.
+# To pick up a fresh calibration file, restart the backend. Small price
+# to pay for avoiding a filesystem check on every scan.
+_CALIBRATION_CACHE: Optional[Dict[str, float]] = None
+
+
+def _load_calibration() -> Dict[str, float]:
+    """Lazy-load the calibration JSON. Returns {"default": 1.0} if absent."""
+    global _CALIBRATION_CACHE
+    if _CALIBRATION_CACHE is not None:
+        return _CALIBRATION_CACHE
+    # Calibration JSON lives at /app/data/calibration_temperatures.json
+    # (mounted from backend/data/). Resolve via __file__ to stay independent
+    # of the container working directory.
+    from pathlib import Path as _Path
+    import json as _json
+    path = _Path(__file__).resolve().parent.parent.parent / "data" / "calibration_temperatures.json"
+    if not path.exists():
+        _CALIBRATION_CACHE = {"default": 1.0}
+        logger.info("No calibration file at %s — using T=1.0 for all sources", path)
+        return _CALIBRATION_CACHE
+    try:
+        raw = _json.loads(path.read_text())
+        _CALIBRATION_CACHE = {k: float(v) for k, v in raw.items()}
+        logger.info("Loaded calibration temperatures: %s", _CALIBRATION_CACHE)
+    except Exception as e:
+        logger.warning("Calibration file %s unreadable (%s) — using T=1.0", path, e)
+        _CALIBRATION_CACHE = {"default": 1.0}
+    return _CALIBRATION_CACHE
+
+
+def _apply_calibration(predictions: List[Dict]) -> List[Dict]:
+    """
+    Apply per-source temperature scaling to prediction confidences.
+
+    calibrated_conf = raw_conf ** (1 / T)
+      - T > 1: softens overconfident source (e.g. Gemini often reports 0.9+
+        but is wrong 30% of the time → calibrated drops to a sensible 0.6-0.7)
+      - T < 1: sharpens underconfident source
+      - T = 1: identity (default for unknown sources)
+
+    Re-sorts by calibrated confidence. Preserves all other fields.
+    """
+    cal = _load_calibration()
+    out = []
+    for p in predictions:
+        src = (p.get("source") or "unknown").lower()
+        t = cal.get(src, cal.get("default", 1.0))
+        conf = float(p.get("confidence", 0.0) or 0.0)
+        if t != 1.0 and conf > 0:
+            # Clamp to [1e-6, 1-1e-6] to avoid 0^inf / log(0) instability
+            safe = max(min(conf, 1 - 1e-6), 1e-6)
+            conf = safe ** (1.0 / max(t, 1e-3))
+        out.append({**p, "confidence": conf, "_raw_confidence": p.get("confidence")})
+    out.sort(key=lambda x: x.get("confidence", 0), reverse=True)
+    return out
 
 ProgressCb = Optional[Callable[[str, int, str, Optional[Dict[str, Any]]], Awaitable[None]]]
 
@@ -267,6 +329,13 @@ async def hybrid_predict(
         scan_rgb = extract_dominant_color(image_bytes)
         if scan_rgb is not None:
             merged = rerank_predictions_by_color(merged, scan_rgb)
+
+    # Temperature calibration — applied LAST so per-source temperatures act
+    # on the final, merged confidences. This is post-hoc scaling only; it
+    # cannot make a wrong prediction right, but it can prevent Gemini's
+    # habitual 0.9+ confidences from dominating Brickognize's honest 0.7s.
+    if USE_CALIBRATION and merged:
+        merged = _apply_calibration(merged)
 
     if merged:
         top = merged[0]

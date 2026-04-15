@@ -150,7 +150,10 @@ def main() -> int:
     parser.add_argument("--base-url", default="http://localhost:8000")
     parser.add_argument("--limit",    type=int, default=500)
     parser.add_argument("--output",   type=Path,
-                        default=Path("ml/data/calibration_temperatures.json"))
+                        default=Path("backend/data/calibration_temperatures.json"),
+                        help=("Backend/data is volume-mounted into the container "
+                              "at /app/data, so the backend can read this JSON "
+                              "on next request without copying or rebuilding."))
     parser.add_argument("--min-samples-per-source", type=int, default=10,
                         help="Skip sources with fewer rows (default 10)")
     args = parser.parse_args()
