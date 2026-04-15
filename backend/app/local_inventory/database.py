@@ -15,7 +15,7 @@ The local inventory system is device-local and not synced to the backend.
 import os
 import logging
 from pathlib import Path
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session, declarative_base
 from typing import Generator
 
@@ -46,17 +46,52 @@ def init_db() -> None:
     """
     Initialize the local inventory database.
 
-    Creates all tables if they don't exist.
-    Safe to call multiple times (idempotent).
+    Creates all tables if they don't exist, then runs idempotent ALTER TABLE
+    statements to add any columns introduced after a table was first created.
+    Safe to call multiple times.
     """
     try:
-        from app.local_inventory.models import LocalInventoryPart, ScanSession
+        # Import ALL models so Base.metadata knows about them before create_all.
+        from app.local_inventory.models import (  # noqa: F401
+            LocalInventoryPart,
+            ScanSession,
+            ScanFeedback,
+            FeedbackEvalSnapshot,
+        )
 
         Base.metadata.create_all(bind=engine)
+        _apply_scan_feedback_column_additions()
         logger.info(f"Local inventory database initialized at {_DB_PATH}")
     except Exception as e:
         logger.error(f"Failed to initialize local inventory database: {e}")
         raise
+
+
+def _apply_scan_feedback_column_additions() -> None:
+    """
+    Add columns introduced after the scan_feedback table was first created.
+
+    SQLite supports ALTER TABLE ADD COLUMN; we check PRAGMA table_info first
+    so this is idempotent. No-op when columns already exist. New installs skip
+    this entirely because create_all() already emits the full current schema.
+    """
+    required_columns = {
+        "feedback_type":           "VARCHAR(30)",
+        "correct_rank":            "INTEGER",
+        "predictions_shown_json":  "TEXT",
+        "time_to_confirm_ms":      "INTEGER",
+    }
+    with engine.begin() as conn:
+        existing = {
+            row[1] for row in conn.execute(text("PRAGMA table_info(scan_feedback)"))
+        }
+        if not existing:
+            # Table doesn't exist yet — create_all() will emit the full schema.
+            return
+        for col, ddl_type in required_columns.items():
+            if col not in existing:
+                conn.execute(text(f"ALTER TABLE scan_feedback ADD COLUMN {col} {ddl_type}"))
+                logger.info("Migrated scan_feedback: added column %s", col)
 
 
 def get_local_db() -> Generator[Session, None, None]:

@@ -21,11 +21,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional
+import os
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from app.services.brickognize_client import identify_part as brickognize_predict
 from app.services.gemini_service import identify_piece as gemini_predict
 from app.services.ml_inference import predict as onnx_predict   # legacy EfficientNet fallback
+from app.services.ml_inference import predict_with_tta
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +39,29 @@ AGREEMENT_BOOST             = 0.10
 
 # k-NN cosine distance below which we trust the result (0 = identical, 2 = max)
 KNN_DISTANCE_THRESHOLD = 0.30
+
+# Gates for the optional cascade enhancements. All disabled by default —
+# Brickognize alone (with Gemini fallback for low-confidence scans) is the
+# baseline that produced the best perceived accuracy. Re-enable per-feature
+# via env vars once the FeedbackStatsScreen shows enough data to A/B them.
+#
+#   SCAN_TTA_ENABLED=true        # 4-rotation TTA over local ONNX (legacy model)
+#   SCAN_ALWAYS_RUN_GEMINI=true  # run Gemini even when Brickognize is confident
+TTA_ENABLED            = os.environ.get("SCAN_TTA_ENABLED", "false").lower() == "true"
+ALWAYS_RUN_GEMINI      = os.environ.get("SCAN_ALWAYS_RUN_GEMINI", "false").lower() == "true"
+TTA_TRIGGER_CONFIDENCE = 0.70  # only invoke TTA when top prediction is below this
+
+ProgressCb = Optional[Callable[[str, int, str, Optional[Dict[str, Any]]], Awaitable[None]]]
+
+
+async def _emit(cb: ProgressCb, stage: str, percent: int, message: str = "",
+                partial: Optional[Dict[str, Any]] = None) -> None:
+    if cb is None:
+        return
+    try:
+        await cb(stage, percent, message, partial)
+    except Exception as e:
+        logger.debug("Progress callback failed (non-fatal): %s", e)
 
 
 def _normalize_part_num(part_num: str) -> str:
@@ -127,35 +152,85 @@ def _merge_predictions(
     return results
 
 
-async def hybrid_predict(image_bytes: bytes) -> List[Dict[str, Any]]:
+async def hybrid_predict(
+    image_bytes: bytes,
+    progress_cb: ProgressCb = None,
+    enable_tta: bool = True,
+) -> List[Dict[str, Any]]:
     """
     Run the full hybrid cascade and return ranked predictions.
 
+    Always runs Brickognize + Gemini + local models in parallel (the old
+    "skip Gemini if Brickognize is confident" gate caused obscure-part misses
+    when Brickognize was *confidently wrong*). The merge logic still rewards
+    cross-source agreement.
+
+    If `enable_tta` and the top result is below TTA_TRIGGER_CONFIDENCE,
+    re-runs the local ONNX classifier under 4-rotation TTA to stabilise.
+
     Each prediction dict contains:
       part_num, part_name, confidence, color_name, color_hex, color_id, source
+
+    Args:
+        image_bytes:  raw JPEG/PNG bytes of the scan
+        progress_cb:  optional async fn(stage, percent, msg, partial) for SSE streaming
+        enable_tta:   if False, skip the TTA stabilisation pass even when conditions match
     """
     logger.info("Starting hybrid recognition pipeline")
+    await _emit(progress_cb, "brickognize_start", 10, "Querying Brickognize…")
 
-    brickognize_preds = await brickognize_predict(image_bytes)
+    # Always run Brickognize + local models in parallel (cheap).
+    # Gemini is only joined in if Brickognize is uncertain OR ALWAYS_RUN_GEMINI
+    # is forced on. This protects accuracy: when Brickognize is confidently
+    # right, Gemini's hallucinations would otherwise pollute slots 2-3.
+    bg_task    = asyncio.create_task(_safe_brickognize(image_bytes))
+    local_task = asyncio.create_task(_safe_local_predict(image_bytes))
+
+    brickognize_preds = await bg_task
     bg_top_conf = brickognize_preds[0].get("confidence", 0) if brickognize_preds else 0
+    await _emit(
+        progress_cb, "brickognize_done", 35,
+        f"Brickognize: {bg_top_conf * 100:.0f}% confidence",
+        partial={"predictions": brickognize_preds[:3]},
+    )
 
     gemini_preds: List[Dict] = []
-    local_preds:  List[Dict] = []
-
-    if bg_top_conf >= BRICKOGNIZE_HIGH_CONFIDENCE:
-        logger.info("Brickognize high-confidence (%.0f%%) — skipping Gemini", bg_top_conf * 100)
-        # Still run local models in background for diversity in the result list
-        local_preds = await _safe_local_predict(image_bytes)
+    should_run_gemini = ALWAYS_RUN_GEMINI or bg_top_conf < BRICKOGNIZE_HIGH_CONFIDENCE
+    if should_run_gemini:
+        await _emit(progress_cb, "gemini_start", 45, "Asking Gemini for a second opinion…")
+        gemini_preds = await _safe_gemini(image_bytes)
+        gm_top_conf = gemini_preds[0].get("confidence", 0) if gemini_preds else 0
+        await _emit(
+            progress_cb, "gemini_done", 65,
+            f"Gemini: {gm_top_conf * 100:.0f}% confidence",
+            partial={"predictions": gemini_preds[:3]},
+        )
     else:
         logger.info(
-            "Brickognize confidence %.0f%% — running Gemini + local models",
+            "Brickognize high-confidence (%.0f%%) — skipping Gemini",
             bg_top_conf * 100,
         )
-        gemini_task = asyncio.create_task(_safe_gemini(image_bytes))
-        local_task  = asyncio.create_task(_safe_local_predict(image_bytes))
-        gemini_preds, local_preds = await asyncio.gather(gemini_task, local_task)
+        await _emit(
+            progress_cb, "gemini_skipped", 65,
+            f"Brickognize confident ({bg_top_conf * 100:.0f}%) — skipping Gemini",
+        )
 
+    await _emit(progress_cb, "local_models", 75, "Running local models…")
+    local_preds = await local_task
+
+    await _emit(progress_cb, "merge", 85, "Merging cross-source results…")
     merged = _merge_predictions(brickognize_preds, gemini_preds, local_preds)
+
+    # TTA stabilisation pass — only when no source is confident
+    top_conf = merged[0].get("confidence", 0) if merged else 0
+    if enable_tta and TTA_ENABLED and top_conf < TTA_TRIGGER_CONFIDENCE:
+        await _emit(progress_cb, "tta", 90, "Stabilising with rotation augmentation…")
+        try:
+            tta_preds = await predict_with_tta(image_bytes, rotations=4)
+            tta_with_source = [{**p, "source": "tta_local"} for p in tta_preds]
+            merged = _merge_predictions(brickognize_preds, gemini_preds, tta_with_source + local_preds)
+        except Exception as e:
+            logger.warning("TTA stabilisation failed (non-fatal): %s", e)
 
     if merged:
         top = merged[0]
@@ -168,6 +243,14 @@ async def hybrid_predict(image_bytes: bytes) -> List[Dict[str, Any]]:
         logger.warning("Hybrid recognition returned no predictions")
 
     return merged
+
+
+async def _safe_brickognize(image_bytes: bytes) -> List[Dict]:
+    try:
+        return await brickognize_predict(image_bytes) or []
+    except Exception as e:
+        logger.warning("Brickognize failed: %s", e)
+        return []
 
 
 async def _safe_gemini(image_bytes: bytes) -> List[Dict]:

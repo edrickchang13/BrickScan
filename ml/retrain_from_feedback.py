@@ -34,16 +34,26 @@ from tqdm import tqdm
 try:
     from train_two_stage import BrickClassifierDataset, FocalLoss
 except ImportError:
-    print("ERROR: Could not import BrickClassifierDataset from train_two_stage.py")
-    print("Make sure train_two_stage.py is in the Python path")
-    import sys
-    sys.exit(1)
+    # Soft import — dry-run mode doesn't need the training dataset module.
+    BrickClassifierDataset = None  # type: ignore
+    FocalLoss = None  # type: ignore
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 log = logging.getLogger("retrain_from_feedback")
+
+
+def _infer_num_classes(state_dict: dict, head_name: str) -> Optional[int]:
+    """
+    Best-effort shape inference: look for the classifier head's final Linear
+    weight tensor and read its output dimension.
+    """
+    for key, tensor in state_dict.items():
+        if head_name in key and key.endswith("weight") and hasattr(tensor, "shape") and len(tensor.shape) == 2:
+            return int(tensor.shape[0])
+    return None
 
 
 def load_feedback_corrections(feedback_csv_or_db_url: Path) -> pd.DataFrame:
@@ -219,20 +229,39 @@ def run_finetuning(
     device = "cuda" if torch.cuda.is_available() else "cpu"
     log.info(f"Fine-tuning on {device}")
 
-    # Load model
-    # NOTE: This assumes the train_two_stage.py model can be imported
-    # User must modify this section to match their model architecture
-    log.error("ERROR: Model loading not implemented in this template.")
-    log.error("Modify run_finetuning() to load your model architecture from checkpoint.")
-    return
+    # ── Load model from checkpoint ────────────────────────────────────────────
+    # Supports two checkpoint shapes:
+    #   a) full dict {"model_state_dict": ..., "num_parts": N, "num_colors": M}
+    #      — the shape `train_two_stage.py` writes
+    #   b) raw state_dict (torch.save(model.state_dict(), ...))
+    try:
+        from train_two_stage import BrickClassifier
+    except ImportError as e:
+        log.error("Cannot import BrickClassifier from train_two_stage.py — is ml/ on PYTHONPATH?")
+        raise
 
-    # Example (uncomment and customize):
-    # from train_two_stage import BrickClassifier
-    # model = BrickClassifier(num_parts=1000, num_colors=100)
-    # checkpoint = torch.load(checkpoint_path, map_location=device)
-    # model.load_state_dict(checkpoint['model_state_dict'])
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+        state_dict = checkpoint["model_state_dict"]
+        num_parts = int(checkpoint.get("num_parts", 1000))
+        num_colors = int(checkpoint.get("num_colors", 100))
+    else:
+        state_dict = checkpoint
+        # Infer shape from the classifier head weights (last linear layer)
+        # This is best-effort; set defaults if inference fails.
+        num_parts = _infer_num_classes(state_dict, "part_head") or 1000
+        num_colors = _infer_num_classes(state_dict, "color_head") or 100
+        log.info("Inferred num_parts=%d num_colors=%d from state_dict", num_parts, num_colors)
+
+    model = BrickClassifier(num_parts=num_parts, num_colors=num_colors)
+    missing, unexpected = model.load_state_dict(state_dict, strict=False)
+    if missing:
+        log.warning("State dict missing keys: %s", missing[:5])
+    if unexpected:
+        log.warning("State dict unexpected keys: %s", unexpected[:5])
 
     model = model.to(device)
+    log.info("Loaded checkpoint: %s (parts=%d, colors=%d)", checkpoint_path, num_parts, num_colors)
 
     # Loss and optimizer
     criterion = FocalLoss(alpha=0.25, gamma=2.0)
@@ -374,20 +403,68 @@ def main():
         default=1e-4,
         help="Learning rate (default: 1e-4)"
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "Validate CSV + checkpoint + env without training. Prints the plan. "
+            "Useful on the Mac side to sanity-check the pipeline before shipping "
+            "to Spark."
+        ),
+    )
 
     args = parser.parse_args()
 
     checkpoint_path = Path(args.checkpoint)
+    feedback_csv = Path(args.feedback_csv)
+    base_data_dir = Path(args.base_data)
+
+    # ── Dry-run: validate the pipeline without actually training ──────────────
+    if args.dry_run:
+        log.info("=" * 60)
+        log.info("DRY RUN — no training will occur")
+        log.info("=" * 60)
+        log.info("Checkpoint:        %s  %s", checkpoint_path, "✓ exists" if checkpoint_path.exists() else "✗ MISSING")
+        log.info("Feedback CSV:      %s  %s", feedback_csv, "✓ exists" if feedback_csv.exists() else "✗ MISSING")
+        log.info("Base data dir:     %s  %s", base_data_dir, "✓ exists" if base_data_dir.exists() else "(optional, skip)")
+        log.info("Feedback uploads:  %s", args.feedback_upload_dir)
+        log.info("Output dir:        %s", args.output_dir)
+        log.info("Feedback weight:   %.1f×", args.feedback_weight)
+        log.info("Epochs:            %d", args.epochs)
+        log.info("Learning rate:     %g", args.lr)
+        log.info("CUDA available:    %s", torch.cuda.is_available())
+
+        if feedback_csv.exists():
+            feedback_df = load_feedback_corrections(feedback_csv)
+            log.info("CSV rows:          %d", len(feedback_df))
+            required = ["image_path", "correct_part_num", "correct_color_id"]
+            missing = [c for c in required if c not in feedback_df.columns]
+            if missing:
+                log.warning("CSV missing required columns: %s", missing)
+            else:
+                log.info("CSV columns OK:    %s", list(feedback_df.columns)[:6])
+                # Sample: do image paths resolve?
+                sample_size = min(3, len(feedback_df))
+                if sample_size:
+                    log.info("Spot-checking image paths (first %d rows)…", sample_size)
+                    for i in range(sample_size):
+                        p = Path(feedback_df.iloc[i]["image_path"])
+                        if not p.is_absolute():
+                            p = Path(args.feedback_upload_dir) / p
+                        log.info("  [%d] %s  %s", i, p, "✓" if p.exists() else "✗")
+        log.info("=" * 60)
+        log.info("Dry run OK — pipeline ready for Spark.")
+        return
+
+    # ── Real run ──────────────────────────────────────────────────────────────
     if not checkpoint_path.exists():
         log.error(f"Checkpoint not found: {checkpoint_path}")
         return
 
-    base_data_dir = Path(args.base_data)
     if not base_data_dir.exists():
         log.error(f"Base data directory not found: {base_data_dir}")
         return
 
-    feedback_csv = Path(args.feedback_csv)
     if not feedback_csv.exists():
         log.error(f"Feedback CSV not found: {feedback_csv}")
         return

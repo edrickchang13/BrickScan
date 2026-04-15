@@ -17,6 +17,25 @@ import {
 } from '@/types';
 
 // ---------------------------------------------------------------------------
+// Streaming Scan Types
+// ---------------------------------------------------------------------------
+export interface ScanProgressEvent {
+  stage: string;          // "brickognize_start" | "gemini_done" | "merge" | "tta" | "done" | …
+  percent: number;        // 0-100, or -1 for keep-alive
+  message: string;
+  partial?: {
+    predictions?: Array<{
+      part_num: string;
+      part_name?: string;
+      confidence: number;
+      color_name?: string;
+      color_hex?: string;
+      source?: string;
+    }>;
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Pile Scan Types
 // ---------------------------------------------------------------------------
 export interface PileResult {
@@ -282,6 +301,133 @@ class ApiClient {
       const response = await this.client.get('/api/local-inventory/inventory/export');
       return response.data;
     });
+  }
+
+  // ------------------------------------------------------------------
+  // Streaming scan with per-stage progress (SSE).
+  //
+  // POST /api/scan/start → { scan_id }, then GET /api/scan/stream/{scan_id}
+  // streams stage events (Brickognize → Gemini → merge → done). The final
+  // event includes the full ScanResponse in `partial.predictions`.
+  //
+  // Why XHR not fetch: React Native's fetch buffers the entire response
+  // before resolving, so SSE doesn't surface mid-stream. XHR's
+  // `onreadystatechange` (readyState 3 = LOADING) gives us partial chunks.
+  //
+  // Falls back to scanImage() if any HTTP step fails — caller never has to
+  // worry about whether streaming is supported on this backend version.
+  // ------------------------------------------------------------------
+  async scanWithProgress(
+    imageBase64: string,
+    onProgress: (event: ScanProgressEvent) => void,
+  ): Promise<ScanResult> {
+    const token = (await SecureStore.getItemAsync(TOKEN_KEY)) ?? '';
+
+    // Step 1: kick off the scan
+    let scanId: string;
+    try {
+      const startResp = await this.client.post(
+        '/api/scan/start',
+        { image_base64: imageBase64 },
+        { timeout: 10000 },
+      );
+      scanId = startResp.data?.scan_id;
+      if (!scanId) throw new Error('No scan_id returned from /api/scan/start');
+    } catch (err: any) {
+      console.warn('[BrickScan] /scan/start unavailable, falling back to legacy scanImage:', err?.message);
+      return this.scanImage(imageBase64);
+    }
+
+    // Step 2: open SSE stream
+    const finalPredictions = await new Promise<any[]>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', `${API_BASE_URL}/api/scan/stream/${scanId}`);
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.setRequestHeader('Accept', 'text/event-stream');
+
+      let lastIndex = 0;
+      let lastPredictions: any[] = [];
+
+      let resolved = false;
+      const flushBuffer = (buf: string) => {
+        // SSE frames are separated by \n\n. Within each frame, lines
+        // beginning with "data:" carry the JSON payload (we ignore comments).
+        for (const frame of buf.split('\n\n')) {
+          if (!frame.trim()) continue;
+          const dataLines = frame
+            .split('\n')
+            .filter((l) => l.startsWith('data:'))
+            .map((l) => l.substring(5).trim());
+          if (dataLines.length === 0) continue;
+          try {
+            const payload = JSON.parse(dataLines.join(''));
+            const event: ScanProgressEvent = {
+              stage: payload.stage,
+              percent: payload.percent ?? -1,
+              message: payload.message ?? '',
+              partial: payload.partial,
+            };
+            onProgress(event);
+            if (event.partial?.predictions) {
+              lastPredictions = event.partial.predictions;
+            }
+            // Resolve as soon as the worker reports "done" — don't wait for connection close
+            if (event.stage === 'done' && !resolved) {
+              resolved = true;
+              try { xhr.abort(); } catch {}
+              resolve(lastPredictions);
+            }
+            if (event.stage === 'error' && !resolved) {
+              resolved = true;
+              try { xhr.abort(); } catch {}
+              reject(new Error(event.message || 'Scan worker error'));
+            }
+          } catch (e) {
+            // Malformed frame — skip silently
+          }
+        }
+      };
+
+      xhr.onreadystatechange = () => {
+        if (xhr.readyState >= 3 /* LOADING */) {
+          const chunk = xhr.responseText.substring(lastIndex);
+          lastIndex = xhr.responseText.length;
+          if (chunk) flushBuffer(chunk);
+        }
+        if (xhr.readyState === 4 /* DONE */ && !resolved) {
+          resolved = true;
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(lastPredictions);
+          } else {
+            reject(new Error(`SSE stream HTTP ${xhr.status}`));
+          }
+        }
+      };
+      xhr.onerror = () => { if (!resolved) { resolved = true; reject(new Error('SSE network error')); } };
+      xhr.ontimeout = () => { if (!resolved) { resolved = true; reject(new Error('SSE timed out')); } };
+      xhr.timeout = 90000; // 90s — gemini + TTA can be slow
+      xhr.send();
+    }).catch(async (err) => {
+      console.warn('[BrickScan] SSE stream failed, falling back to /scan/result:', err?.message);
+      // Backend already finished the scan; pull final result via the polling endpoint.
+      const resp = await this.client.get(`/api/scan/result/${scanId}`, { timeout: 30000 });
+      return resp.data?.predictions ?? [];
+    });
+
+    return {
+      predictions: (finalPredictions || []).map((p: any) => ({
+        partNum: p.part_num || '',
+        partName: p.part_name || p.part_num || 'Unknown Part',
+        colorId: String(p.color_id ?? ''),
+        colorName: p.color_name || '',
+        colorHex: p.color_hex
+          ? p.color_hex.startsWith('#') ? p.color_hex : '#' + p.color_hex
+          : '',
+        confidence: p.confidence || 0,
+        imageUrl: p.image_url || (p.part_num ? this.partImageUrl(p.part_num) : undefined),
+        source: p.source || undefined,
+      })),
+    };
   }
 
   // ------------------------------------------------------------------

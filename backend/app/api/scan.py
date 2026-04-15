@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+import asyncio
 import base64
-from typing import Optional, List
+from typing import Any, Dict, Optional, List
 import logging
 from io import BytesIO
 from pathlib import Path
@@ -12,14 +13,19 @@ import subprocess
 import json
 from datetime import datetime, timezone
 
-from app.core.database import get_db
+from app.core.database import get_db, AsyncSessionLocal
 from app.core.security import get_current_user
 from app.core.config import settings
 from app.models.inventory import ScanLog
 from app.models.part import Part, Color
-from app.schemas.scan import ScanRequest, ScanResponse, ScanPrediction, ConfirmScanRequest, StudGrid
+from app.schemas.scan import (
+    ScanRequest, ScanResponse, ScanPrediction, ConfirmScanRequest, StudGrid,
+    PieceDetection, ScanStartResponse,
+)
 from app.services.ml_inference import predict as ml_predict
 from app.services.gemini_service import identify_piece
+from app.services.hybrid_recognition import hybrid_predict
+from app.services import scan_jobs
 
 try:
     from PIL import Image
@@ -40,6 +46,11 @@ async def scan(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Legacy synchronous scan endpoint — preserved so existing mobile clients
+    don't break. New clients should call POST /scan/start + GET /scan/stream/{id}
+    for real-time progress.
+    """
     user_id = current_user.get("sub")
 
     try:
@@ -50,31 +61,12 @@ async def scan(
             detail="Invalid base64 image",
         )
 
-    predictions = []
-    confidence_score = 0.0
-    predicted_part_num = None
+    # Run the upgraded cascade (Brickognize + Gemini + local in parallel + TTA)
+    predictions: List[Dict[str, Any]] = await hybrid_predict(image_bytes)
+    detections: List[PieceDetection] = await _maybe_detect_multipiece(image_bytes)
 
-    ml_results = await ml_predict(image_bytes)
-
-    if ml_results and len(ml_results) > 0:
-        top_result = ml_results[0]
-        confidence_score = top_result.get("confidence", 0.0)
-
-        if confidence_score >= settings.CONFIDENCE_THRESHOLD:
-            predictions = ml_results[:3]
-            predicted_part_num = ml_results[0].get("part_num")
-        else:
-            gemini_results = await identify_piece(image_bytes)
-            predictions = gemini_results[:3]
-            if gemini_results:
-                predicted_part_num = gemini_results[0].get("part_num")
-                confidence_score = gemini_results[0].get("confidence", 0.0)
-    else:
-        gemini_results = await identify_piece(image_bytes)
-        predictions = gemini_results[:3]
-        if gemini_results:
-            predicted_part_num = gemini_results[0].get("part_num")
-            confidence_score = gemini_results[0].get("confidence", 0.0)
+    confidence_score = predictions[0].get("confidence", 0.0) if predictions else 0.0
+    predicted_part_num = predictions[0].get("part_num") if predictions else None
 
     scan_log = ScanLog(
         user_id=user_id,
@@ -212,10 +204,90 @@ async def scan(
 
     return ScanResponse(
         predictions=response_predictions,
+        detections=detections,
         stud_grid=stud_grid_response,
         scan_id=str(scan_log.id),
         thumbnail_url=thumbnail_url,
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Streaming scan endpoints (new)
+# ──────────────────────────────────────────────────────────────────────────────
+
+@router.post("/start", response_model=ScanStartResponse)
+async def scan_start(
+    request: ScanRequest,
+    background_tasks: BackgroundTasks,
+):
+    """
+    Kick off a scan and return immediately with a scan_id.
+    Client opens GET /scan/stream/{scan_id} for SSE progress + GET /scan/result/{id}
+    for the final ScanResponse once the stream emits stage="done".
+
+    No auth required — matches the unauthenticated /api/local-inventory/scan
+    endpoint the mobile actually uses. Auth can be re-enabled per-endpoint
+    once the app gains a real sign-in flow.
+    """
+    try:
+        image_bytes = base64.b64decode(request.image_base64)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid base64 image",
+        )
+    scan_id = await scan_jobs.create_job()
+    background_tasks.add_task(_run_scan_pipeline, scan_id, image_bytes, None)
+    return ScanStartResponse(scan_id=scan_id)
+
+
+@router.get("/stream/{scan_id}")
+async def scan_stream(scan_id: str):
+    """SSE stream of progress events for a scan job. Terminates on stage='done' or error."""
+    try:
+        async def event_source():
+            async for event in scan_jobs.subscribe(scan_id):
+                # Heartbeat: keep proxies happy without polluting client state
+                if event.get("stage") == "heartbeat":
+                    yield ": heartbeat\n\n"
+                    continue
+                yield f"data: {json.dumps(event)}\n\n"
+        return StreamingResponse(
+            event_source(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )
+    except KeyError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Scan job not found or expired",
+        )
+
+
+@router.get("/result/{scan_id}", response_model=ScanResponse)
+async def scan_result(scan_id: str):
+    """Fetch the final ScanResponse once the worker has finished."""
+    job = await scan_jobs.get_result(scan_id)
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Scan job not found or expired",
+        )
+    if not job.finished:
+        raise HTTPException(
+            status_code=status.HTTP_425_TOO_EARLY,
+            detail="Scan still in progress",
+        )
+    if job.error or job.result is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=job.error or "Scan produced no result",
+        )
+    return ScanResponse(**job.result)
 
 
 @router.post("/depth", response_model=ScanResponse)
@@ -662,6 +734,170 @@ async def scan_multiview(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"MultiView scan failed: {str(e)}",
         )
+
+
+# ==============================================================================
+# Helpers shared by legacy + streaming scan endpoints
+# ==============================================================================
+
+async def _maybe_detect_multipiece(image_bytes: bytes) -> List[PieceDetection]:
+    """
+    Run multi-piece detection. Tries trained YOLO first (ModelManager); falls
+    back to OpenCV contour detection if no YOLO weights are loaded. Each
+    detected box gets its own cascade pass so we return per-piece predictions.
+
+    Returns [] if only one piece is detected (caller should use top-level
+    `predictions` instead) or if both detectors find nothing.
+    """
+    try:
+        from app.ml.model_manager import ModelManager
+        from app.ml.multipiece_detector import detect_pieces_cv
+
+        mm = ModelManager.get()
+        boxes = mm.detect_pieces(image_bytes) if mm.yolo_available else []
+        detector_name = "yolo"
+        if not boxes:
+            boxes = detect_pieces_cv(image_bytes)
+            detector_name = "opencv"
+        if len(boxes) < 2:
+            return []  # single-piece: legacy `predictions` already covers this
+
+        # Cascade-classify each detected crop in parallel
+        per_box_preds = await asyncio.gather(
+            *[hybrid_predict(b.crop_bytes, enable_tta=False) for b in boxes],
+            return_exceptions=True,
+        )
+        detections: List[PieceDetection] = []
+        for box, preds in zip(boxes, per_box_preds):
+            if isinstance(preds, Exception) or not preds:
+                continue
+            detections.append(PieceDetection(
+                bbox={"x1": box.x1, "y1": box.y1, "x2": box.x2, "y2": box.y2},
+                detector=detector_name,
+                predictions=[
+                    ScanPrediction(
+                        part_num=p.get("part_num", "unknown"),
+                        part_name=p.get("part_name", ""),
+                        color_name=p.get("color_name"),
+                        color_hex=p.get("color_hex"),
+                        confidence=p.get("confidence", 0.0),
+                        source=p.get("source"),
+                    )
+                    for p in preds[:3]
+                ],
+            ))
+        return detections
+    except Exception as e:
+        logger.warning("Multi-piece detection failed (non-fatal): %s", e)
+        return []
+
+
+async def _run_scan_pipeline(scan_id: str, image_bytes: bytes, user_id: Optional[str]) -> None:
+    """
+    Background worker: runs the cascade with progress callbacks publishing to
+    the scan_jobs queue, then writes the final ScanResponse via finish().
+    """
+    async def progress_cb(stage: str, percent: int, message: str = "",
+                          partial: Optional[Dict[str, Any]] = None) -> None:
+        await scan_jobs.publish(scan_id, {
+            "stage": stage, "percent": percent, "message": message, "partial": partial,
+        })
+
+    try:
+        await progress_cb("decode", 5, "Decoded image, starting recognition…")
+        predictions = await hybrid_predict(image_bytes, progress_cb=progress_cb)
+
+        await progress_cb("multipiece", 92, "Looking for additional pieces…")
+        detections = await _maybe_detect_multipiece(image_bytes)
+
+        await progress_cb("persist", 96, "Saving scan…")
+        scan_log_id = await _persist_scan(image_bytes, predictions, user_id)
+
+        await progress_cb("enrich", 98, "Looking up part details…")
+        async with AsyncSessionLocal() as session:
+            response_predictions = await _enrich_predictions(predictions, session)
+
+        result_payload = ScanResponse(
+            predictions=response_predictions,
+            detections=detections,
+            scan_id=scan_log_id,
+            thumbnail_url=f"/api/scans/{scan_log_id}/thumbnail" if scan_log_id else None,
+        ).model_dump()
+
+        await progress_cb("done", 100, "Done", partial={"predictions": result_payload["predictions"]})
+        await scan_jobs.finish(scan_id, result=result_payload)
+    except Exception as e:
+        logger.error("Scan pipeline failed for %s: %s", scan_id, e, exc_info=True)
+        await scan_jobs.publish(scan_id, {"stage": "error", "percent": 100, "message": str(e), "partial": None})
+        await scan_jobs.finish(scan_id, error=str(e))
+
+
+async def _persist_scan(image_bytes: bytes, predictions: List[Dict[str, Any]],
+                        user_id: Optional[str]) -> Optional[str]:
+    """
+    Insert a ScanLog row and save the thumbnail. Returns scan_log id (str) or
+    None on failure / when user_id is missing (anonymous scans don't persist
+    to the user-scoped ScanLog table).
+    """
+    if user_id is None:
+        # Anonymous scan — no DB persistence (matches the local-inventory flow)
+        return None
+    try:
+        async with AsyncSessionLocal() as session:
+            scan_log = ScanLog(
+                user_id=user_id,
+                predicted_part_num=predictions[0].get("part_num") if predictions else None,
+                confidence=predictions[0].get("confidence", 0.0) if predictions else 0.0,
+            )
+            session.add(scan_log)
+            await session.commit()
+            await session.refresh(scan_log)
+            scan_log_id = str(scan_log.id)
+        if Image and image_bytes:
+            scan_user_dir = SCAN_UPLOADS_DIR / str(user_id)
+            scan_user_dir.mkdir(parents=True, exist_ok=True)
+            pil = Image.open(BytesIO(image_bytes)).convert("RGB")
+            pil.thumbnail((400, 400), Image.Resampling.LANCZOS)
+            pil.save(scan_user_dir / f"{scan_log_id}.jpg", format="JPEG", quality=85)
+        return scan_log_id
+    except Exception as e:
+        logger.warning("Failed to persist scan: %s", e)
+        return None
+
+
+async def _enrich_predictions(predictions: List[Dict[str, Any]],
+                              session: AsyncSession) -> List[ScanPrediction]:
+    """Look up part / colour names from the DB to fill missing fields."""
+    enriched: List[ScanPrediction] = []
+    for pred in predictions:
+        part_num = pred.get("part_num", "unknown")
+        part_name = pred.get("part_name", "Unknown")
+        color_name = pred.get("color_name")
+        color_hex = pred.get("color_hex")
+        try:
+            part_row = (await session.execute(
+                select(Part).where(Part.part_num == part_num)
+            )).scalars().first()
+            if part_row:
+                if not part_name or part_name == "Unknown":
+                    part_name = part_row.name
+                if not color_name and color_hex:
+                    color_row = (await session.execute(
+                        select(Color).where(Color.hex_code == color_hex)
+                    )).scalars().first()
+                    if color_row:
+                        color_name = color_row.name
+        except Exception as e:
+            logger.debug("Enrichment lookup failed for %s: %s", part_num, e)
+        enriched.append(ScanPrediction(
+            part_num=part_num,
+            part_name=part_name,
+            color_name=color_name,
+            color_hex=color_hex,
+            confidence=pred.get("confidence", 0.0),
+            source=pred.get("source"),
+        ))
+    return enriched
 
 
 # ==============================================================================

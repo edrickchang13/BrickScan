@@ -880,31 +880,59 @@ async def search_parts(q: str, limit: int = 20):
     import csv as _csv
     import os as _os
 
+    # Where the Rebrickable parts.csv lives. Order = priority.
+    # In Docker, the canonical location is /app/data_pipeline/rebrickable_data/parts.csv
+    # (mounted from <repo>/data_pipeline/rebrickable_data/parts.csv).
     _search_paths = [
-        _os.path.expanduser("~/brickscan/ml/training_data/rebrickable_csv/parts.csv"),
-        "/app/data/parts.csv",
-        "/data/parts.csv",
-        _os.path.join(_os.path.dirname(__file__), "..", "..", "data", "parts.csv"),
+        "/app/data_pipeline/rebrickable_data/parts.csv",                                       # docker (current)
+        "/app/data/parts.csv",                                                                  # docker (legacy)
+        "/data/parts.csv",                                                                      # docker (legacy)
+        _os.path.join(_os.path.dirname(__file__), "..", "..", "..", "data_pipeline", "rebrickable_data", "parts.csv"),  # local dev
+        _os.path.expanduser("~/brickscan/ml/training_data/rebrickable_csv/parts.csv"),         # legacy host
     ]
 
     parts_csv = next((_p for _p in _search_paths if _os.path.exists(_p)), None)
 
     if not parts_csv:
+        logger.warning(
+            "parts.csv not found in any of: %s", _search_paths
+        )
         return []
 
-    q_lower = q.lower().strip()
-    results = []
+    import re as _re
 
+    def _normalize(s: str) -> str:
+        """
+        Lower-case + collapse '2 x 4' → '2x4' so the user can type either form.
+        Rebrickable stores "Brick 2 x 4" but most people type "brick 2x4".
+        """
+        s = (s or "").lower().strip()
+        return _re.sub(r"(\d)\s*x\s*(\d)", r"\1x\2", s)
+
+    q_norm = _normalize(q)
+    if not q_norm:
+        return []
+
+    # Tokenized AND-search: every whitespace-separated token must appear
+    # somewhere in the part_num + name combined. This makes "2x4 brick"
+    # match the same items as "brick 2x4".
+    tokens = q_norm.split()
+
+    def _matches(haystack: str) -> bool:
+        return all(t in haystack for t in tokens)
+
+    results = []
     try:
         with open(parts_csv, encoding="utf-8", errors="ignore") as f:
             reader = _csv.DictReader(f)
             for row in reader:
-                pnum = row.get("part_num", "").lower()
-                pname = row.get("name", "").lower()
-                if q_lower in pnum or q_lower in pname:
+                pnum = row.get("part_num") or ""
+                pname = row.get("name") or ""
+                haystack = _normalize(f"{pname} {pnum}")
+                if _matches(haystack):
                     results.append({
-                        "part_num": row["part_num"],
-                        "part_name": row.get("name", row["part_num"]),
+                        "part_num": pnum,
+                        "part_name": pname or pnum,
                         "category_id": row.get("part_cat_id"),
                     })
                     if len(results) >= limit:
@@ -912,6 +940,7 @@ async def search_parts(q: str, limit: int = 20):
     except Exception as e:
         logger.warning(f"Part search CSV error: {e}")
 
+    logger.debug("Part search '%s' → %d results from %s", q, len(results), parts_csv)
     return results
 
 
