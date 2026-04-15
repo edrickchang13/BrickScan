@@ -7,8 +7,10 @@ RUN apt-get update && apt-get install -y \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements-dev.txt ./
+# Install dev deps (pytest etc.) in addition to runtime — the tests mount is
+# wired in docker-compose so the image is usable for both serving and testing.
+RUN pip install --no-cache-dir -r requirements-dev.txt
 
 COPY . .
 

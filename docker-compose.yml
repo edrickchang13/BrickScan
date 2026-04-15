@@ -53,6 +53,7 @@ services:
       - ./backend/alembic:/app/alembic
       - ./backend/models:/app/models
       - ./backend/data:/app/data      # ML artefacts: CLIP embeddings_cache.pkl, calibration_temperatures.json
+      - ./backend/tests:/app/tests    # Mounted so `docker-compose exec backend pytest` picks up host edits.
       - ./data_pipeline:/app/data_pipeline
       - brickscan_sqlite_data:/root
     depends_on:

@@ -1,0 +1,10 @@
+# Test-only dependencies. Installed on top of requirements.txt in the dev
+# Docker image so `docker-compose exec backend pytest` works out of the box.
+# Host venv users can: pip install -r requirements-dev.txt
+-r requirements.txt
+# Pin pytest<9 — the existing scan/inventory/legacy suites use sync functions
+# that request async fixtures, a pattern pytest 9 turned from warning → error.
+# Fixing every test individually is out of scope; the 8.x line runs them all.
+pytest==8.3.5
+pytest-asyncio==0.24.0
+aiosqlite==0.22.1

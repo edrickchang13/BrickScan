@@ -18,7 +18,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool
 
-from app.main import app
+from main import app  # backend/main.py — conftest puts backend root on sys.path
 from app.local_inventory.database import get_local_db, Base
 from app.local_inventory.models import LocalInventoryPart, ScanSession
 from app.local_inventory.schemas import (
