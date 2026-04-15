@@ -137,3 +137,8 @@ ml/data/huggingface_legobricks/
 ml/data/*.zip
 ml/data/*.tar
 ml/data/*.tar.gz
+ml/data/synthetic_dataset_dr_pilot/
+ml/data/catalog_image_cache/
+ml/data/eval_results/
+ml/data/models/
+ml/blender/hdris
