@@ -159,3 +159,10 @@ backend/data/calibration_temperatures.json
 # Emitted by ml/scripts/precompute_clip_catalog.py — regenerable in ~1 min
 backend/data/embeddings_cache.pkl
 backend/data/embeddings_cache.misses.txt
+
+# ML model backup directories (local rollback only, do not commit)
+backend/models/backup_*/
+backend/app/ml/models/
+
+# Stale symlink artifact (external-data file aliased for ONNX loader)
+backend/models/best.onnx.data

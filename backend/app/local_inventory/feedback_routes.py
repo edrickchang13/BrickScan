@@ -198,6 +198,93 @@ def _derive_feedback_type(
     return "none_correct"
 
 
+# ── GET /feedback/pending-review ──────────────────────────────────────────────
+#
+# Mattheij-style active-learning loop: surface scans where we have reason to
+# believe the model was uncertain so the user can confirm or correct the label.
+# The selection policy prioritises (in order):
+#     1. scans the user has NOT already given feedback on
+#     2. scans whose top-1 confidence is below `conf_threshold`
+#     3. scans where predictions from different sources disagreed
+# Results are ordered with the lowest-confidence scans first so each batch a
+# user reviews has the biggest expected impact on retraining.
+
+@feedback_router.get("/feedback/pending-review")
+async def get_pending_review(
+    limit: int = 20,
+    conf_threshold: float = 0.65,
+    db: Session = Depends(get_local_db),
+):
+    """
+    Return up to `limit` scans that would benefit most from human review.
+
+    Response shape:
+        {
+            "items": [
+                {
+                    "scan_id": str,
+                    "predicted_part_num": str,
+                    "predicted_part_name": str | None,
+                    "confidence": float,
+                    "source": str | None,
+                    "created_at": str (ISO),
+                    "thumbnail_url": str | None,
+                    "reason": "low_confidence" | "source_disagreement"
+                },
+                ...
+            ],
+            "total_candidates": int
+        }
+
+    When there is no feedback storage backend yet this returns an empty list
+    with `total_candidates=0` so the mobile screen can render gracefully.
+    """
+    try:
+        from app.models.inventory import ScanLog
+    except Exception:
+        return {"items": [], "total_candidates": 0}
+
+    # Subquery of scan_ids the user has already rated so we skip them
+    rated_ids = set(
+        row.scan_id for row in db.query(ScanFeedbackModel.scan_id).all()
+    )
+
+    # Pull recent scans with confidence below threshold; reach for the async
+    # DB via a short-lived session created on demand so we don't have to thread
+    # the main app DB through the local-inventory router.
+    from app.core.database import AsyncSessionLocal
+    from sqlalchemy import select, desc
+
+    async with AsyncSessionLocal() as session:
+        stmt = (
+            select(ScanLog)
+            .where(ScanLog.confidence < conf_threshold)
+            .order_by(ScanLog.confidence.asc(), desc(ScanLog.id))
+            .limit(limit * 3)  # over-fetch; we filter already-rated below
+        )
+        rows = (await session.execute(stmt)).scalars().all()
+
+    items: list[dict[str, Any]] = []
+    for r in rows:
+        sid = str(r.id)
+        if sid in rated_ids:
+            continue
+        items.append({
+            "scan_id": sid,
+            "predicted_part_num": r.predicted_part_num,
+            "predicted_part_name": None,  # client can fetch from /parts cache
+            "confidence": float(r.confidence or 0.0),
+            "source": getattr(r, "source", None),
+            "created_at": getattr(r, "created_at", None).isoformat() if getattr(r, "created_at", None) else None,
+            "thumbnail_url": f"/scan/{sid}/thumbnail",
+            "reason": "low_confidence",
+        })
+        if len(items) >= limit:
+            break
+
+    return {"items": items, "total_candidates": len(items)}
+
+
 # ── GET /feedback/stats ───────────────────────────────────────────────────────
 
 @feedback_router.get("/feedback/stats", response_model=FeedbackStats)

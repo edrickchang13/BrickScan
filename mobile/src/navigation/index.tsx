@@ -10,6 +10,7 @@ import { RegisterScreen } from '@/screens/auth/RegisterScreen';
 import { ScanScreen } from '@/screens/ScanScreen';
 import { ScanResultScreen } from '@/screens/ScanResultScreen';
 import { FeedbackStatsScreen } from '@/screens/FeedbackStatsScreen';
+import { ReviewQueueScreen } from '@/screens/ReviewQueueScreen';
 import { MultiResultScreen } from '@/screens/MultiResultScreen';
 import PileScanScreen from '@/screens/PileScanScreen';
 import { ScanHistoryScreen } from '@/screens/ScanHistoryScreen';
@@ -117,6 +118,11 @@ const ScanStackNavigator = () => (
     <ScanStack.Screen name="ScanHistoryScreen" component={ScanHistoryWrapper} />
     <ScanStack.Screen name="PartDetailScreen" component={PartDetailScreen} />
     <ScanStack.Screen name="FeedbackStatsScreen" component={FeedbackStatsScreen} />
+    <ScanStack.Screen
+      name="ReviewQueueScreen"
+      component={ReviewQueueScreen}
+      options={{ title: 'Review Queue', headerShown: true }}
+    />
   </ScanStack.Navigator>
 );
 
