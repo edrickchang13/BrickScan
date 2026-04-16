@@ -118,7 +118,13 @@ export const FeedbackStatsScreen: React.FC<Props> = ({ navigation }) => {
           <Ionicons name="arrow-back" size={22} color={C.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Model Accuracy</Text>
-        <View style={{ width: 38 }} />
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => navigation.navigate('ReviewQueueScreen')}
+          accessibilityLabel="Review uncertain scans"
+        >
+          <Ionicons name="checkmark-done-circle-outline" size={22} color={C.red} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView

@@ -12,6 +12,7 @@ import type { ScanStackParamList } from '@/types';
 import { C, R, S, shadow } from '@/constants/theme';
 import { FeedbackRow } from '@/components/FeedbackRow';
 import { SubstituteSuggestions } from '@/components/SubstituteSuggestions';
+import { HeatmapExplainer } from '@/components/HeatmapExplainer';
 import { submitAlternativeFeedback, type PredictionShown } from '@/services/feedbackApi';
 
 type Props = NativeStackScreenProps<ScanStackParamList, 'ScanResultScreen'>;
@@ -250,6 +251,13 @@ export const ScanResultScreen: React.FC<Props> = ({ route, navigation }) => {
           colorId={predictions[0].colorId}
           predictionsShown={predictionsShown}
           scanStartMs={scanStartMs}
+        />
+
+        {/* Grad-CAM / occlusion-sensitivity explainer — only for local models */}
+        <HeatmapExplainer
+          scanId={scanId}
+          source={(predictions[0] as any).source ?? 'unknown'}
+          partName={predictions[0].partName}
         />
 
         {/* Alternative matches — tap to both view AND report "it's actually this one" */}

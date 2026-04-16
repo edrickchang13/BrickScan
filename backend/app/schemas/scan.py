@@ -35,6 +35,9 @@ class ScanResponse(BaseModel):
     stud_grid: Optional[StudGrid] = None
     scan_id: Optional[str] = None
     thumbnail_url: Optional[str] = None
+    # URL of a Grad-CAM / occlusion-sensitivity heatmap overlay explaining the
+    # top prediction (populated when the backend can introspect the model).
+    heatmap_url: Optional[str] = None
 
 
 class ConfirmScanRequest(BaseModel):

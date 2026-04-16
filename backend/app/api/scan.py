@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -403,6 +403,104 @@ async def get_scan_thumbnail(
         media_type="image/jpeg",
         filename=f"scan_{scan_id}.jpg",
     )
+
+
+@router.get("/{scan_id}/heatmap")
+async def get_scan_heatmap(
+    scan_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Return a Grad-CAM (or occlusion-sensitivity) overlay PNG explaining the
+    top prediction for the given scan.
+
+    This is on-demand: we don't pre-compute heatmaps on every scan (too slow),
+    but we keep the scan thumbnail so we can regenerate them whenever the user
+    taps "why this part?" in the mobile UI.
+
+    The overlay is cached at {SCAN_UPLOADS_DIR}/{user_id}/{scan_id}.heatmap.png.
+    """
+    user_id = current_user.get("sub")
+
+    result = await db.execute(
+        select(ScanLog).where(
+            (ScanLog.id == scan_id) & (ScanLog.user_id == user_id)
+        )
+    )
+    scan_log = result.scalars().first()
+    if not scan_log:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan not found")
+
+    user_dir = SCAN_UPLOADS_DIR / str(user_id)
+    thumb_path = user_dir / f"{scan_id}.jpg"
+    if not thumb_path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Thumbnail missing")
+
+    cached = user_dir / f"{scan_id}.heatmap.png"
+    if cached.exists():
+        return FileResponse(cached, media_type="image/png", filename=f"heatmap_{scan_id}.png")
+
+    # Lazy import — keep server startup cheap if matplotlib / torch are absent
+    try:
+        from app.ml.gradcam import explain  # local shim under app.ml
+    except Exception:  # pragma: no cover
+        try:
+            # Fallback to the ML package path shipped separately
+            import sys
+            sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent / "ml" / "inference"))
+            from gradcam import explain  # type: ignore
+        except Exception as e:
+            logger.warning("Grad-CAM module unavailable: %s", e)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Heatmap generation is not configured on this server",
+            )
+
+    try:
+        from PIL import Image as PILImage
+        img = PILImage.open(thumb_path).convert("RGB")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not read thumbnail: {e}")
+
+    # Predicted class index lookup — use the top prediction's source model to
+    # pick the right target_class. We'll default to whatever the checkpoint
+    # reports; if the top prediction came from Brickognize (not our model) we
+    # don't have a target index, so we bail out cleanly with 204.
+    target_class = getattr(scan_log, "predicted_class_idx", None)
+    if target_class is None:
+        # Try to derive from the model's class_names file
+        model_dir = Path(settings.ml_model_dir) if hasattr(settings, "ml_model_dir") else None
+        if model_dir and (model_dir / "class_names.json").exists():
+            try:
+                names = json.loads((model_dir / "class_names.json").read_text())
+                if scan_log.predicted_part_num in names:
+                    target_class = names.index(scan_log.predicted_part_num)
+            except Exception:
+                pass
+    if target_class is None:
+        return Response(status_code=204)  # No content — can't explain this prediction
+
+    # Attempt Grad-CAM
+    ckpt_path = None
+    onnx_session = None
+    try:
+        from app.services.ml_inference import get_onnx_session  # type: ignore
+        onnx_session = get_onnx_session()
+    except Exception:
+        onnx_session = None
+
+    result_cam = explain(
+        image=img,
+        target_class=int(target_class),
+        pytorch_checkpoint=ckpt_path,
+        onnx_session=onnx_session,
+    )
+    if result_cam is None:
+        return Response(status_code=204)
+
+    cached.write_bytes(result_cam.overlay_png)
+    return FileResponse(cached, media_type="image/png", filename=f"heatmap_{scan_id}.png")
 
 
 @router.post("/confirm")

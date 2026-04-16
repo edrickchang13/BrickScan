@@ -226,6 +226,7 @@ export type ScanStackParamList = {
     confidence?: number;
   };
   FeedbackStatsScreen: undefined;
+  ReviewQueueScreen: undefined;
 };
 
 export type SetsStackParamList = {

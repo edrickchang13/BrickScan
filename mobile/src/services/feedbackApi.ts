@@ -220,6 +220,58 @@ export async function getFeedbackStats(): Promise<FeedbackStats> {
 }
 
 /**
+ * One item in the "Review your uncertain scans" list — the Mattheij-style
+ * bootstrap loop. Backend selects low-confidence scans the user hasn't rated
+ * yet so each correction has maximal impact on retraining.
+ */
+export interface PendingReviewItem {
+  scanId: string;
+  predictedPartNum: string;
+  predictedPartName?: string;
+  confidence: number;
+  source?: string;
+  createdAt?: string;
+  thumbnailUrl?: string;
+  reason: 'low_confidence' | 'source_disagreement';
+}
+
+export async function getPendingReview(
+  limit: number = 20,
+  confThreshold: number = 0.65,
+): Promise<{ items: PendingReviewItem[]; totalCandidates: number }> {
+  const res = await axios.get<{
+    items: Array<{
+      scan_id: string;
+      predicted_part_num: string;
+      predicted_part_name?: string;
+      confidence: number;
+      source?: string;
+      created_at?: string;
+      thumbnail_url?: string;
+      reason: 'low_confidence' | 'source_disagreement';
+    }>;
+    total_candidates: number;
+  }>(
+    `${API_BASE}/api/local-inventory/feedback/pending-review`,
+    { params: { limit, conf_threshold: confThreshold } },
+  );
+
+  return {
+    items: res.data.items.map(i => ({
+      scanId:            i.scan_id,
+      predictedPartNum:  i.predicted_part_num,
+      predictedPartName: i.predicted_part_name,
+      confidence:        i.confidence,
+      source:            i.source,
+      createdAt:         i.created_at,
+      thumbnailUrl:      i.thumbnail_url ? `${API_BASE}${i.thumbnail_url}` : undefined,
+      reason:            i.reason,
+    })),
+    totalCandidates: res.data.total_candidates,
+  };
+}
+
+/**
  * Helper: submit "user tapped alternative rank N" feedback.
  * Called by ScanResultScreen when the user taps one of the non-top prediction cards.
  */
