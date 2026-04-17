@@ -143,10 +143,12 @@ ml/data/eval_results/
 ml/data/models/
 ml/blender/hdris
 
-# …but track the one canonical model bundle the backend loads at startup
-# (everything else stays excluded). Small enough (8 MB total) to version.
+# …but track the canonical model bundles the backend loads at startup
+# (everything else stays excluded).
 !backend/models/lego_classifier.onnx
 !backend/models/lego_classifier.onnx.data
+!backend/models/yolo_lego.onnx
+!backend/models/yolo_lego.results.csv
 
 # Trained-model local state — not committed
 backend/models/*.mystery_backup

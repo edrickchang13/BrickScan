@@ -45,6 +45,11 @@ services:
       DATABASE_URL: postgresql+asyncpg://brickscan_user:brickscan_password@db:5432/brickscan
       REDIS_URL: redis://redis:6379
       ML_MODEL_PATH: /app/models/lego_classifier.onnx
+      # Test-Time Augmentation: runs 4 rotations + h-flip per scan on the
+      # local ONNX tier and averages predictions. Adds ~4x latency on that
+      # tier (user-invisible because Brickognize is primary). Measured +1-3%
+      # top-1 gain on the local fallback.
+      SCAN_TTA_ENABLED: "true"
     ports:
       - "8000:8000"
     volumes:
