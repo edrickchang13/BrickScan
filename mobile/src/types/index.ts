@@ -227,6 +227,7 @@ export type ScanStackParamList = {
   };
   FeedbackStatsScreen: undefined;
   ReviewQueueScreen: undefined;
+  ContinuousScanScreen: undefined;
 };
 
 export type SetsStackParamList = {
