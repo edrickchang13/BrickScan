@@ -1,483 +1,372 @@
-# BrickScan - LEGO Piece Scanning iOS App
+# BrickScan — LEGO piece scanner & inventory
 
-BrickScan is a comprehensive iOS application that helps LEGO enthusiasts scan and manage their brick collections. Using advanced computer vision and machine learning, users can quickly identify LEGO pieces by scanning them with their phone camera, then manage a complete inventory of their collection.
+BrickScan is a mobile app that identifies LEGO pieces from a phone camera in
+real time and keeps a personal inventory of what you own. Point the camera at
+a brick, a pile of bricks, or a whole desk of loose parts — the app returns
+part numbers, colors, and names, and lets you tap-to-add to your collection.
+
+Underneath the camera view is a multi-source recognition cascade that
+combines an on-device YOLO detector, a local CNN classifier, a CLIP-based
+k-NN catalog voter, a Gemini vision fallback, and a feedback flywheel that
+retrains on user corrections. Scans happen on-device when possible and
+fall back to the backend only when confidence is low.
 
 ## Features
 
-- **Smart Piece Scanning**: Real-time LEGO brick detection using on-device ML models
-- **Inventory Management**: Track your complete LEGO collection with quantities and colors
-- **Build Planning**: Check if you have all the pieces for any LEGO set
-- **BrickLink Integration**: Export missing pieces to BrickLink for purchasing
-- **Offline Support**: Scan and manage inventory without constant internet connection
-- **Cloud Sync**: Optional cloud backup and sync across devices
+### Recognition
 
-## Tech Stack
+- **Continuous live scanning** — streaming camera view with per-piece bbox
+  tracking, Kalman-smoothed overlays, and tap-to-confirm. Persists session
+  state, so closing and reopening the app restores the in-progress scan.
+- **Multi-piece detection** — point the camera at a pile of bricks and the
+  YOLOv8 detector returns a bounding box + classification for each one.
+- **On-device inference (Phase 5)** — int8-quantized YOLOv8-L (58 MB) runs
+  locally via `onnxruntime-react-native`, with transparent fallback to the
+  backend when the on-device model is disabled or fails. Toggle in
+  Settings → *On-Device Detection*.
+- **Hybrid recognition cascade** — every scan is evaluated by up to four
+  independent sources and their predictions are merged with source-specific
+  confidence calibration:
+  - **Brickognize API** (external classifier, bulk of accuracy today)
+  - **Gemini 2.5** (vision-language fallback, optional grounded-prompt mode)
+  - **Local ONNX classifier** (MobileNetV3 trained on our pipeline)
+  - **CLIP catalog k-NN voter** (similarity-based embeddings)
+- **Feedback flywheel** — every scan where the user corrects the top pick
+  is logged as a labeled training example; the model is periodically
+  retrained on confirmed corrections via `ml/scripts/retrain_from_feedback.py`.
+- **Grad-CAM explainability** — see where the model is actually looking
+  in the scanned image.
+
+### Collection management
+
+- **Inventory tracking** — parts, colors, quantities, with filter/sort/search.
+- **Local-only mode** — the entire app runs against a local SQLite inventory
+  without any account or cloud dependency (toggle in Settings).
+- **BrickLink wanted-list export** — generate a BrickLink-compatible XML
+  from your missing-pieces list for any LEGO set (in progress).
+- **Set browsing** — search the Rebrickable catalog (76K+ parts, 26K+ sets,
+  16K+ minifigs), view part lists, and check completion against your
+  inventory.
+
+### Inference quality infrastructure
+
+- **Env-gated feature flags** — A/B test improvements in production without
+  redeploying. All default off, enable per-deployment:
+  - `SCAN_TTA_ENABLED` — test-time augmentation (4× compute, ~1-2% accuracy)
+  - `SCAN_GROUNDED_GEMINI` — pass classifier's top-3 candidates to Gemini
+    as disambiguation hints instead of open-set classification
+  - `SCAN_COLLAPSE_VARIANTS` — regex-based mold/print variant merging
+    (3001a/3001b/3001pr0001 → 3001)
+  - `SCAN_COLOR_RERANK` — downweight candidates whose catalog color is far
+    from the scan's dominant RGB
+  - `SCAN_USE_CALIBRATION` — apply per-source temperature scaling from
+    `backend/data/calibration_temperatures.json`
+  - `SCAN_ALWAYS_RUN_GEMINI` — bypass the "skip Gemini if Brickognize
+    confident" optimization
+- **Per-source temperature calibration** — fit a scalar temperature per
+  recognition source against the feedback eval set so reported confidences
+  actually match accuracy (`ml/scripts/calibrate_temperatures.py`).
+- **Eval harness** — `ml/scripts/eval_against_feedback.py` replays feedback
+  images against the live backend and emits top-1/top-3 accuracy broken
+  down by source, with confusion pair analysis.
+- **A/B runner** — `ml/scripts/run_ab_eval.sh` sweeps the flag space
+  (baseline / grounded / collapse / color / all-on) and emits a markdown
+  comparison report.
+
+## Tech stack
 
 ### Backend
-- **Framework**: FastAPI (Python 3.11+)
-- **Database**: PostgreSQL 16
-- **Cache**: Redis 7
-- **Migrations**: Alembic
-- **API**: RESTful with async/await support
-- **Authentication**: JWT tokens
+- **FastAPI** (Python 3.11) + async SQLAlchemy 2.0
+- **PostgreSQL 16** for the catalog + user data
+- **Redis 7** for rate-limiting and response caching
+- **ONNX Runtime** for local model inference
+- **Alembic** for schema migrations
+- **Pytest** (pinned to 8.3.5) for the regression suite
 
 ### Mobile
-- **Framework**: React Native with Expo
-- **Language**: TypeScript
-- **ML**: TensorFlow Lite (on-device inference)
-- **State Management**: Redux Toolkit
-- **Testing**: Jest + React Native Testing Library
+- **React Native** (Expo SDK 55) with TypeScript
+- **Zustand** for state management (lightweight, no Redux boilerplate)
+- **onnxruntime-react-native 1.24.3** for on-device YOLO inference
+- **jpeg-js** + **expo-asset** for the frame preprocessing pipeline
+- **Jest** unit tests (16/16 green for the ML pipeline — letterbox, RGBA→NCHW, NMS)
+
+### ML pipeline
+- **PyTorch 2.x** + torchvision for classifier training
+- **Ultralytics YOLOv8** for multi-piece detection
+- **open_clip_torch** (CLIP ViT-B/32) for catalog embeddings
+- **onnxruntime.quantization** for int8 QDQ quantization
+- **Blender 4** + LDraw for synthetic training renders
+- **NVIDIA DGX Spark (GB10, 128 GB VRAM)** for training runs
 
 ### Infrastructure
-- **Containerization**: Docker & Docker Compose
-- **CI/CD**: GitHub Actions
-- **Database**: PostgreSQL with pgAdmin (Adminer)
-- **Cache**: Redis for caching and session management
+- **Docker Compose** for the local dev stack (backend + db + redis + Adminer)
+- **GitHub Actions** for lint + type-check + test CI
+- **Tailscale** for remote Spark access
 
-## Prerequisites
+## Quick start
 
-### System Requirements
-- **Node.js**: 20.x LTS
-- **Python**: 3.11+
-- **Docker**: Latest version with Docker Compose
-- **Xcode**: 15+ (for iOS development)
-- **Expo CLI**: `npm install -g expo-cli`
-
-### API Keys & Credentials
-- **Rebrickable API**: Free account at https://rebrickable.com
-- **BrickLink API**: Account at https://www.bricklink.com
-- **Google Gemini API**: For advanced image recognition (optional)
-
-## Quick Start
-
-### 1. Clone Repository
 ```bash
 git clone <repository-url>
 cd brickscan
-```
 
-### 2. Setup Environment
-```bash
-# Copy environment template and fill in your API keys
+# 1. Environment
 cp backend/.env.example backend/.env
+# Fill in REBRICKABLE_API_KEY, BRICKLINK_API_KEY (optional), GEMINI_API_KEY
+# (optional), JWT_SECRET_KEY (openssl rand -hex 32)
 
-# Edit backend/.env with:
-# - REBRICKABLE_API_KEY=your_key
-# - BRICKLINK_API_KEY=your_key
-# - GEMINI_API_KEY=your_key (optional)
-# - JWT_SECRET_KEY=your_secret (generate with: openssl rand -hex 32)
-```
-
-### 3. Start Docker Services
-```bash
+# 2. Bring up services
 make up
-```
 
-This starts:
-- PostgreSQL database (port 5432)
-- Redis cache (port 6379)
-- FastAPI backend (port 8000)
-- Adminer DB UI (port 8080)
-
-### 4. Initialize Database
-```bash
-# Run migrations
+# 3. Schema
 make migrate
-```
 
-### 5. Import Rebrickable Data
-```bash
-# Download Rebrickable CSV dumps
-cd data_pipeline
-./download_rebrickable.sh ./rebrickable_data
-cd ..
+# 4. Rebrickable catalog import (one-time, ~2 min)
+cd data_pipeline && ./download_rebrickable.sh ./rebrickable_data && cd ..
+make import-data && make verify-data
 
-# Import into database
-make import-data
-
-# Verify import success
-make verify-data
-```
-
-### 6. Start Mobile Development
-```bash
-# Install dependencies
+# 5. Mobile
 make install-mobile
-
-# Start iOS dev server (requires Xcode simulator)
-make dev-mobile
+cd mobile && npx expo start          # Metro bundler
+cd mobile/ios && pod install          # iOS native deps (needed after Phase 5)
+npx expo run:ios                      # build + launch to simulator
 ```
 
-## API Documentation
+## API
 
-Once the backend is running, interactive API documentation is available:
+Interactive docs once the backend is running:
+- **Swagger UI** — http://localhost:8000/docs
+- **ReDoc** — http://localhost:8000/redoc
 
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
+### Route layout
 
-### Key Endpoints
+The backend has two parallel route trees reflecting the app's hybrid mode:
 
-#### Authentication
-- `POST /api/v1/auth/register` - Register new user
-- `POST /api/v1/auth/login` - Login and get JWT token
-- `GET /api/v1/auth/me` - Get current user profile
-- `POST /api/v1/auth/refresh` - Refresh access token
+| Prefix | Purpose |
+|---|---|
+| `/auth` | Registration, login, JWT refresh |
+| `/api/scan` | Legacy single-piece classifier endpoint |
+| `/api/inventory` | User inventory CRUD (requires auth) |
+| `/api/parts`, `/api/sets` | Rebrickable catalog search |
+| `/api/local-inventory/scan` | Hybrid cascade single-piece scan |
+| `/api/local-inventory/scan-multi` | Multi-piece detect + classify |
+| `/api/local-inventory/scan-video` | Temporal-aggregation video scan |
+| `/api/local-inventory/feedback` | Feedback flywheel ingest + eval export |
+| `/bricklink` | BrickLink price lookup + wanted-list XML |
 
-#### Inventory Management
-- `GET /api/v1/inventory/items` - List user's inventory
-- `POST /api/v1/inventory/items` - Add piece to inventory
-- `PATCH /api/v1/inventory/items/{id}` - Update quantity
-- `DELETE /api/v1/inventory/items/{id}` - Remove piece
+## ML training
 
-#### Build Checking
-- `GET /api/v1/builds/{set_id}/check` - Check if user has all pieces for a set
-- `GET /api/v1/builds/{set_id}/missing` - Get list of missing pieces
-- `GET /api/v1/builds/{set_id}/bricklink-xml` - Export missing pieces as BrickLink XML
-
-#### LEGO Data
-- `GET /api/v1/parts` - Search parts database
-- `GET /api/v1/sets` - Search LEGO sets
-- `GET /api/v1/colors` - List available colors
-- `GET /api/v1/themes` - List LEGO themes
-
-## Development Workflow
-
-### Running Tests
+Training scripts live in `ml/` and run on the DGX Spark. The full pipeline:
 
 ```bash
-# Backend tests
+# On Spark:
+ssh spark
+
+# 1. Build merged training set (HF synthetic + Nature 2023 real + labeled)
+python3 ~/brickscan/ml/merge_all_datasets.py \
+    --output-dir ~/brickscan/ml/training_data/merged \
+    --hf-dir ~/brickscan/ml/training_data/huggingface_legobricks/images \
+    --nature-dir ~/brickscan/ml/training_data/nature_2023_real
+
+# 2. Train MobileNetV3-Large classifier
+python3 ~/brickscan/ml/train_mobilenetv3_gpu.py \
+    --data-dir ~/brickscan/ml/training_data/merged \
+    --output-dir ~/brickscan/ml/output/mobilenetv3_$(date +%Y%m%d) \
+    --epochs 25 --batch-size 384 --model-size large
+
+# 3. Precompute CLIP catalog embeddings for the k-NN voter
+python3 ~/brickscan/ml/precompute_clip_gpu.py \
+    --data-dir ~/brickscan/ml/training_data/merged \
+    --output ~/brickscan/ml/output/embeddings_cache.pkl
+
+# 4. Quantize the YOLO detector for on-device use
+backend/venv/bin/python ml/export/quantize_yolo_int8.py \
+    --input  backend/models/yolo_lego.onnx \
+    --output backend/models/yolo_lego.int8.onnx \
+    --calib-dir /path/to/yolo_dataset/images/val
+```
+
+### Current model versions
+
+| Artifact | Path | Size | Notes |
+|---|---|---|---|
+| Local classifier | `backend/models/lego_classifier.onnx` + `.data` | 18 MB | MobileNetV3-Small, 502 classes, 91.6% cross-domain top-1 |
+| Multi-piece detector (server) | `backend/models/yolo_lego.onnx` | 167 MB | YOLOv8-L, 28 classes (size, color). Not tracked in git. |
+| On-device detector | `mobile/assets/models/yolo_lego.int8.onnx` | 58 MB | int8 QDQ-quantized YOLOv8-L. 0.964 mean IoU@matched vs fp32. |
+| CLIP catalog embeddings | `backend/data/embeddings_cache.pkl` | 2 MB | 1072 classes × 512-dim |
+| Per-source calibration | `backend/data/calibration_temperatures.json` | <1 KB | Temperatures fit from feedback eval set |
+
+## Testing
+
+```bash
+# Backend (runs in the docker container, pytest 8.3.5 pinned)
 make test-backend
 
-# Mobile tests
-make test-mobile
+# Mobile (Jest unit tests)
+cd mobile && npx jest
+
+# ML pipeline specifically
+cd mobile && npx jest src/__tests__/ml/
+# → 16/16 green: letterbox math, RGBA→NCHW conversion, NMS, unletterbox
+
+# Backend flag-gated cascade tests
+docker-compose exec -T backend pytest \
+    tests/test_calibration.py \
+    tests/test_cascade_flags.py \
+    tests/test_eval_set_export.py
 ```
 
-### Code Quality
+The backend test suite had a bootstrap bug (`conftest.py` importing
+`app.main` that never existed) that was fixed in commit `47b1710`. The pre-existing
+`test_auth.py` / `test_inventory.py` / `test_scan*.py` suites still have
+known breakage (UUID columns vs SQLite in-memory; sync tests requesting async
+fixtures) — tracked as separate work items.
+
+## Development workflow
 
 ```bash
-# Run linters and formatters
-make lint-backend
+# Start/stop dev stack
+make up        # Services on 8000 (backend), 5432 (db), 6379 (redis), 8080 (adminer)
+make down
 
-# Format code
-docker-compose exec backend black app/ tests/
-```
-
-### Database Management
-
-```bash
-# Access PostgreSQL directly
+# Logs + shells
+make logs
+make backend-shell
 make db-shell
 
-# View database with web UI
-# Visit http://localhost:8080
-# Server: db
-# User: brickscan_user
-# Password: brickscan_password
-# Database: brickscan
+# Lint & format
+make lint-backend
+docker-compose exec backend black app/ tests/
 
-# Create new migration
+# Migrations
 docker-compose exec backend alembic revision -m "description"
-
-# Rollback migrations
 docker-compose exec backend alembic downgrade -1
-```
 
-### Backend Development
-
-```bash
-# Enter backend shell
-make backend-shell
-
-# Run single test file
-pytest tests/test_auth.py -v
-
-# Debug with print statements
-pytest tests/test_auth.py -v -s
-```
-
-### Mobile Development
-
-```bash
-# Install dependencies
-make install-mobile
-
-# Start development server
-make dev-mobile
-
-# Run type checking
-cd mobile && npx tsc --noEmit
-
-# Format code
+# Mobile
+cd mobile && npx tsc --noEmit         # type check
 cd mobile && npx prettier --write src/
 ```
 
-## Project Structure
+## Project layout
 
 ```
 brickscan/
-├── backend/                      # FastAPI backend
+├── backend/
+│   ├── main.py                      # FastAPI app entry point
 │   ├── app/
-│   │   ├── main.py             # FastAPI app initialization
-│   │   ├── database.py          # Database configuration
-│   │   ├── models/              # SQLAlchemy ORM models
-│   │   ├── schemas/             # Pydantic request/response schemas
-│   │   ├── api/                 # API route handlers
-│   │   ├── services/            # Business logic
-│   │   ├── core/                # Core utilities (auth, config, etc)
-│   │   └── ml/                  # ML model loading & inference
-│   ├── alembic/                 # Database migrations
-│   ├── tests/                   # Backend unit & integration tests
+│   │   ├── api/                     # Authenticated REST routes
+│   │   ├── local_inventory/         # Local-mode scan + feedback routes
+│   │   ├── services/
+│   │   │   ├── hybrid_recognition.py   # Cascade + env-gated flags
+│   │   │   ├── brickognize_client.py
+│   │   │   ├── gemini_service.py
+│   │   │   ├── ml_inference.py         # ONNX runner for local classifier
+│   │   │   ├── part_num_normalizer.py  # Mold/variant collapse
+│   │   │   └── color_extractor.py      # Dominant-color histogram
+│   │   ├── ml/                      # EmbeddingLibrary (CLIP k-NN)
+│   │   └── core/                    # Auth, DB, config
+│   ├── models/                      # ONNX artifacts (gitignored except canonical)
+│   ├── data/                        # Calibration temps, CLIP embeddings
+│   ├── tests/
 │   ├── Dockerfile
-│   ├── requirements.txt         # Python dependencies
-│   ├── requirements-dev.txt     # Development dependencies
-│   └── alembic.ini
+│   ├── requirements.txt
+│   └── requirements-dev.txt
 │
-├── mobile/                       # React Native/Expo app
+├── mobile/
 │   ├── src/
-│   │   ├── screens/             # Screen components
-│   │   ├── components/          # Reusable components
-│   │   ├── services/            # API clients & utilities
-│   │   ├── store/               # Redux state management
-│   │   ├── models/              # ML inference
-│   │   └── App.tsx
-│   ├── package.json
-│   ├── tsconfig.json
+│   │   ├── screens/
+│   │   │   ├── ContinuousScanScreen.tsx  # Live streaming scan
+│   │   │   ├── ScanScreen.tsx
+│   │   │   ├── InventoryScreen.tsx
+│   │   │   └── SettingsScreen.tsx        # On-device / local-only toggles
+│   │   ├── ml/                           # Phase 5 on-device pipeline
+│   │   │   ├── preprocess.ts             # Letterbox + NCHW Float32
+│   │   │   ├── postprocess.ts            # YOLOv8 head decode + NMS
+│   │   │   ├── yoloDetector.ts           # onnxruntime session wrapper
+│   │   │   └── scanPipeline.ts           # JPEG → RGBA → detect → pieces
+│   │   ├── store/                        # Zustand stores (auth, inventory)
+│   │   ├── utils/
+│   │   │   ├── bboxTracker.ts            # IoU-based cross-frame tracking
+│   │   │   ├── settingsFlags.ts          # AsyncStorage flag keys
+│   │   │   └── scanSession.ts            # Session persistence
+│   │   └── services/                     # apiClient + screen helpers
+│   ├── assets/models/                    # int8 YOLO bundled into the app
+│   ├── __tests__/ml/                     # Jest unit tests
 │   └── app.json
 │
-├── data_pipeline/               # Data import utilities
-│   ├── rebrickable_import.py   # CSV import script
-│   ├── verify_import.py         # Data validation
-│   └── download_rebrickable.sh  # Download CSV dumps
+├── ml/
+│   ├── scripts/                     # Training, eval, calibration scripts
+│   ├── export/                      # ONNX export + int8 quantization
+│   ├── training/                    # Training pipelines (incl. YOLO distillation)
+│   ├── blender/                     # Synthetic render pipeline
+│   └── data/                        # Training data symlinks (all gitignored)
 │
-├── .github/
-│   └── workflows/               # CI/CD workflows
-│       ├── backend_ci.yml
-│       └── mobile_ci.yml
-│
-├── docker-compose.yml           # Local development stack
-├── Makefile                     # Development commands
-├── .gitignore
-└── README.md
+├── data_pipeline/                   # Rebrickable CSV import utilities
+├── docker-compose.yml
+├── Makefile
+└── docs/                            # Phase 5 status, design notes
 ```
 
-## Database Schema
+## Getting API keys
 
-### Core Tables
+| Service | URL | What it buys you |
+|---|---|---|
+| Rebrickable | https://rebrickable.com/api/ | Free catalog data: 76K+ parts, 26K+ sets, 16K+ minifigs |
+| BrickLink | https://www.bricklink.com | Free price guide data (OAuth 1.0a) — requires seller account |
+| Google Gemini | https://ai.google.dev | Vision-language fallback for the recognition cascade |
 
-**users** - User accounts and authentication
-- id (UUID)
-- email (unique)
-- hashed_password
-- full_name
-- is_active
-- created_at, updated_at
-
-**colors** - LEGO color definitions
-- id (from Rebrickable)
-- name
-- rgb (hex color code)
-- is_transparent
-
-**part_categories** - Part type categories (Brick, Plate, etc)
-- id (from Rebrickable)
-- name
-
-**parts** - LEGO piece definitions
-- id (UUID)
-- part_num (unique, from Rebrickable)
-- name
-- part_category_id
-- material
-- image_url
-
-**themes** - LEGO themes (Star Wars, City, etc)
-- id (from Rebrickable)
-- name
-- parent_id (for theme hierarchy)
-
-**lego_sets** - LEGO set definitions
-- id (UUID)
-- set_num (unique, from Rebrickable)
-- name
-- year
-- theme_id
-- num_parts
-- image_url
-
-**set_parts** - Junction table mapping sets to their pieces
-- id (UUID)
-- set_id
-- part_id
-- color_id
-- quantity
-- is_spare
-
-**inventory_items** - User's collected pieces
-- id (UUID)
-- user_id
-- part_id
-- color_id
-- quantity
-- Unique constraint: (user_id, part_id, color_id)
-
-**scan_logs** - Record of piece scans for training
-- id (UUID)
-- user_id
-- part_id (nullable)
-- color_id (nullable)
-- quantity
-- confidence (ML model confidence)
-- image_path
-- status (success, unknown, error)
-- error_message
-
-## Getting API Keys
-
-### Rebrickable
-1. Visit https://rebrickable.com/api/
-2. Create free account
-3. Generate API key on account page
-4. Add to `backend/.env`: `REBRICKABLE_API_KEY=your_key`
-
-### BrickLink
-1. Visit https://www.bricklink.com
-2. Go to Account > Preferences > API > Registration
-3. Create new API key
-4. Add to `backend/.env`: `BRICKLINK_API_KEY=your_key`
-
-### Google Gemini (Optional)
-1. Visit https://ai.google.dev
-2. Create project and enable Gemini API
-3. Generate API key
-4. Add to `backend/.env`: `GEMINI_API_KEY=your_key`
-
-## ML Model Training
-
-The app includes on-device ML models for piece classification. To update models:
-
-```bash
-# In future: train pipeline instructions
-# For now, pre-trained TensorFlow Lite models are included in mobile/models/
+Add each to `backend/.env`:
 ```
-
-## Common Commands Reference
-
-```bash
-# Start development environment
-make up
-
-# Stop services
-make down
-
-# View logs
-make logs
-
-# Run migrations
-make migrate
-
-# Import Rebrickable data
-make import-data
-
-# Verify data import
-make verify-data
-
-# Run backend tests
-make test-backend
-
-# Run mobile tests
-make test-mobile
-
-# Start mobile dev server
-make dev-mobile
-
-# Run linters
-make lint-backend
-
-# Access database shell
-make db-shell
-
-# Access backend shell
-make backend-shell
-
-# Clean up everything
-make clean
+REBRICKABLE_API_KEY=...
+BRICKLINK_CONSUMER_KEY=...
+BRICKLINK_CONSUMER_SECRET=...
+BRICKLINK_TOKEN_VALUE=...
+BRICKLINK_TOKEN_SECRET=...
+GEMINI_API_KEY=...
+JWT_SECRET_KEY=...   # openssl rand -hex 32
 ```
-
-## Contributing
-
-1. Create feature branch: `git checkout -b feature/your-feature`
-2. Make changes and write tests
-3. Run `make lint-backend` and `make test-backend`
-4. Commit with clear messages
-5. Push to branch and create Pull Request
-
-## CI/CD
-
-GitHub Actions automatically runs:
-- Python linting (ruff, black)
-- Python type checking (mypy)
-- Backend pytest suite with PostgreSQL test database
-- TypeScript type checking
-- Jest mobile tests
-- Code coverage reports
 
 ## Troubleshooting
 
-### Docker Issues
 ```bash
-# Rebuild containers
-docker-compose down && docker-compose up -d --build
-
-# Check service health
+# Backend won't start: check the stack
 docker-compose ps
-
-# View service logs
 docker-compose logs backend
-docker-compose logs db
-```
 
-### Database Issues
-```bash
-# Reset database (destroys data!)
+# Database fresh reset (destroys data)
 docker-compose down -v
+make up && make migrate && make import-data
 
-# Connect to database
-make db-shell
+# Mobile build fails after Phase 5 changes
+cd mobile && rm -rf node_modules && npm install
+cd ios && pod install && cd ..
+npx expo start --clear
 
-# Check migration status
-docker-compose exec backend alembic current
+# ONNX model missing on backend startup
+# The canonical classifier is tracked at backend/models/lego_classifier.onnx.
+# The YOLO detector (backend/models/yolo_lego.onnx, 167 MB) is NOT tracked —
+# regenerate with `ml/export/to_onnx.py` or download from the team's model
+# registry. The int8 derivative ships via git LFS / direct commit.
 ```
 
-### Mobile Development
-```bash
-# Clear Expo cache
-cd mobile && npx expo start --clear
+## What's not in this repo
 
-# Clear npm cache
-npm cache clean --force
+- Trained `.pt` checkpoints (live on the Spark, not in git)
+- The 167 MB fp32 YOLO ONNX (exceeds GitHub's 100 MB limit — only the 58 MB
+  int8 derivative is tracked)
+- Training datasets (Rebrickable CSVs, HuggingFace LEGO Bricks, Nature 2023
+  real photos — all regenerable via the download scripts)
+- Spark-side training artifacts (`backend/models/spark_*/` is gitignored)
 
-# Reinstall dependencies
-rm -rf node_modules package-lock.json && npm install
-```
+## CI/CD
 
-## Performance Tips
-
-- Use Redis caching for frequently accessed LEGO data
-- Index inventory queries by user_id for fast retrieval
-- Lazy load images with progressive JPEG
-- Batch ML inference on multiple scans
-- Use database connection pooling
+GitHub Actions run on every push:
+- `backend_ci.yml` — ruff + black lint, mypy, pytest against PostgreSQL + Redis
+- `mobile_ci.yml` — TypeScript type-check, Jest unit tests, ESLint
 
 ## License
 
-This project is licensed under the MIT License.
+MIT.
 
 ## Support
 
-For issues, feature requests, or questions:
-- Open GitHub Issue
-- Contact: support@brickscan.dev
-
----
-
-Built with passion for LEGO enthusiasts everywhere!
+Issues, feature requests, bug reports: GitHub Issues on this repo.
