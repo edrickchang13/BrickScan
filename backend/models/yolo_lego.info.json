@@ -1,0 +1,17 @@
+{
+  "model": "yolov8l",
+  "task": "detection",
+  "input_size": 640,
+  "num_classes": 28,
+  "metrics": {
+    "precision": 0.8835,
+    "recall": 0.8096,
+    "mAP50": 0.8733,
+    "mAP50_95": 0.7156
+  },
+  "trained_at": "2026-04-17",
+  "training_dataset": "Roboflow Hex:Lego v3 — 7,408 train / 628 val",
+  "epochs": 80,
+  "architecture": "YOLOv8-L (Ultralytics)",
+  "notes": "Pile detection — finds individual bricks in a multi-brick scene so the classifier can run on each crop. Enables the 'scan a pile' feature."
+}

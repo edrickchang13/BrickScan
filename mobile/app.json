@@ -56,6 +56,10 @@
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
       ]
-    }
+    },
+    "assetBundlePatterns": [
+      "**/*",
+      "assets/models/*.onnx"
+    ]
   }
 }

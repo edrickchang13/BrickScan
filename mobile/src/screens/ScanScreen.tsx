@@ -834,6 +834,15 @@ export const ScanScreen: React.FC<Props> = ({ navigation }) => {
             </View>
           )}
 
+          <TouchableOpacity
+            style={styles.liveBadge}
+            onPress={() => navigation.navigate('ContinuousScanScreen')}
+            hitSlop={8}
+          >
+            <Ionicons name="flash" size={12} color={C.white} style={{ marginRight: 4 }} />
+            <Text style={styles.liveBadgeText}>Live</Text>
+          </TouchableOpacity>
+
           {scanMode === 'video' && (
             <TouchableOpacity
               style={[
@@ -1231,6 +1240,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   depthBadgeText: { color: C.white, fontSize: 11, fontWeight: '600' },
+  liveBadge: {
+    backgroundColor: 'rgba(227, 0, 11, 0.9)',
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: R.full,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  liveBadgeText: { color: C.white, fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
   multiviewBadgeActive: {
     backgroundColor: 'rgba(22, 163, 74, 0.8)',
   },

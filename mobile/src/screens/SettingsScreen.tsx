@@ -13,8 +13,12 @@ import type { ProfileStackParamList } from '@/types';
 
 type Props = NativeStackScreenProps<ProfileStackParamList, 'SettingsScreen'>;
 
-const SCAN_MODE_KEY = 'brickscan_default_scan_mode';
-const LOCAL_ONLY_KEY = 'brickscan_local_only';
+import { SETTINGS_KEYS } from '@/utils/settingsFlags';
+
+const SCAN_MODE_KEY = SETTINGS_KEYS.scanMode;
+const LOCAL_ONLY_KEY = SETTINGS_KEYS.localOnly;
+const ON_DEVICE_KEY = SETTINGS_KEYS.onDeviceDetect;
+const HIGH_PERF_KEY = SETTINGS_KEYS.highPerfMode;
 
 type ScanMode = 'photo' | 'video' | 'multi';
 
@@ -27,6 +31,8 @@ const SCAN_MODES: { value: ScanMode; label: string; icon: string; desc: string }
 export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
   const [defaultScanMode, setDefaultScanMode] = useState<ScanMode>('photo');
   const [localOnly, setLocalOnly] = useState(false);
+  const [onDeviceDetect, setOnDeviceDetect] = useState(false);
+  const [highPerfMode, setHighPerfMode] = useState(false);
   const [isClearingHistory, setIsClearingHistory] = useState(false);
   const [isClearingCache, setIsClearingCache] = useState(false);
   const [apiUrl] = useState(() => apiClient.getBaseUrl());
@@ -37,11 +43,15 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
     Promise.all([
       AsyncStorage.getItem(SCAN_MODE_KEY),
       AsyncStorage.getItem(LOCAL_ONLY_KEY),
-    ]).then(([mode, local]) => {
+      AsyncStorage.getItem(ON_DEVICE_KEY),
+      AsyncStorage.getItem(HIGH_PERF_KEY),
+    ]).then(([mode, local, onDev, hp]) => {
       if (mode === 'photo' || mode === 'video' || mode === 'multi') {
         setDefaultScanMode(mode);
       }
       setLocalOnly(local === 'true');
+      setOnDeviceDetect(onDev === 'true');
+      setHighPerfMode(hp === 'true');
     });
 
     // Check API status
@@ -56,6 +66,16 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
   const handleToggleLocalOnly = async (value: boolean) => {
     setLocalOnly(value);
     await AsyncStorage.setItem(LOCAL_ONLY_KEY, value ? 'true' : 'false');
+  };
+
+  const handleToggleOnDevice = async (value: boolean) => {
+    setOnDeviceDetect(value);
+    await AsyncStorage.setItem(ON_DEVICE_KEY, value ? 'true' : 'false');
+  };
+
+  const handleToggleHighPerf = async (value: boolean) => {
+    setHighPerfMode(value);
+    await AsyncStorage.setItem(HIGH_PERF_KEY, value ? 'true' : 'false');
   };
 
   const handleClearHistory = () => {
@@ -185,7 +205,7 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
       {/* AI Settings */}
       <Text style={styles.sectionLabel}>AI</Text>
       <View style={styles.card}>
-        <View style={styles.settingRow}>
+        <View style={[styles.settingRow, styles.rowBorder]}>
           <View style={[styles.settingIcon, { backgroundColor: '#EEF2FF' }]}>
             <Ionicons name="hardware-chip-outline" size={20} color="#6366F1" />
           </View>
@@ -198,6 +218,38 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
             onValueChange={handleToggleLocalOnly}
             trackColor={{ false: C.border, true: C.red + '80' }}
             thumbColor={localOnly ? C.red : C.textMuted}
+          />
+        </View>
+
+        <View style={[styles.settingRow, styles.rowBorder]}>
+          <View style={[styles.settingIcon, { backgroundColor: '#ECFDF5' }]}>
+            <Ionicons name="cube-outline" size={20} color="#059669" />
+          </View>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingTitle}>On-Device Detection</Text>
+            <Text style={styles.settingDesc}>Detect bricks locally in continuous scan (beta)</Text>
+          </View>
+          <Switch
+            value={onDeviceDetect}
+            onValueChange={handleToggleOnDevice}
+            trackColor={{ false: C.border, true: C.red + '80' }}
+            thumbColor={onDeviceDetect ? C.red : C.textMuted}
+          />
+        </View>
+
+        <View style={styles.settingRow}>
+          <View style={[styles.settingIcon, { backgroundColor: '#FEF3C7' }]}>
+            <Ionicons name="flash-outline" size={20} color="#D97706" />
+          </View>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingTitle}>High Performance Mode</Text>
+            <Text style={styles.settingDesc}>Skip auto-throttle on heat/low battery</Text>
+          </View>
+          <Switch
+            value={highPerfMode}
+            onValueChange={handleToggleHighPerf}
+            trackColor={{ false: C.border, true: C.red + '80' }}
+            thumbColor={highPerfMode ? C.red : C.textMuted}
           />
         </View>
       </View>
