@@ -10,4 +10,12 @@ config.resolver.blockList = [
   /android\/\.gradle\/.*/,
 ];
 
+// Treat .onnx as a bundleable asset so Expo Asset can resolve the
+// on-device YOLO model via require(). Without this, Metro throws
+// "Unable to resolve module" for require('./yolo_lego.int8.onnx').
+const defaultAssetExts = config.resolver.assetExts || [];
+if (!defaultAssetExts.includes('onnx')) {
+  config.resolver.assetExts = [...defaultAssetExts, 'onnx'];
+}
+
 module.exports = config;

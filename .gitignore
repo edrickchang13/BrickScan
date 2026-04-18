@@ -147,8 +147,17 @@ ml/blender/hdris
 # (everything else stays excluded).
 !backend/models/lego_classifier.onnx
 !backend/models/lego_classifier.onnx.data
-!backend/models/yolo_lego.onnx
+# The fp32 yolo_lego.onnx (167 MB) is NOT tracked — exceeds GitHub's 100 MB
+# file-size limit. Keep a local copy for running the int8 quant script; the
+# int8 derivative (58 MB) is what actually ships.
+!backend/models/yolo_lego.int8.onnx
 !backend/models/yolo_lego.results.csv
+
+# Mobile bundles the int8 detector into the app via Expo's asset pipeline —
+# must be tracked so EAS/expo build picks it up. 58 MB, regenerable via
+# `ml/export/quantize_yolo_int8.py` if the blob ever gets lost.
+!mobile/assets/models/
+!mobile/assets/models/yolo_lego.int8.onnx
 
 # Trained-model local state — not committed
 backend/models/*.mystery_backup
@@ -168,3 +177,21 @@ backend/app/ml/models/
 
 # Stale symlink artifact (external-data file aliased for ONNX loader)
 backend/models/best.onnx.data
+
+# Orphaned ONNX external-data files. onnxruntime.quantization.quant_pre_process
+# occasionally drops GUID-named .data siblings in the working directory when
+# it reshuffles external weights. Catch them at the repo root so a rogue
+# `git add .` doesn't push 166 MB to GitHub.
+/*.data
+/*.onnx
+
+# macOS Finder duplication artifacts. When two apps touch the same file at
+# the same time Finder sometimes writes `Foo 2.ext`. We never commit those.
+**/* 2.lock
+**/* 2.json
+**/* 2.yml
+**/* 2.yaml
+
+# Spark-side snapshot downloads — local reference copies of models trained on
+# the DGX. The canonical backend model lives at backend/models/lego_classifier.onnx.
+backend/models/spark_*/

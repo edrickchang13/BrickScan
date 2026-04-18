@@ -39,6 +39,8 @@ import {
 } from '@/utils/bboxTracker';
 import { saveSession, loadSession, clearSession } from '@/utils/scanSession';
 import { useInventoryStore } from '@/store/inventoryStore';
+import { SETTINGS_KEYS, readBool } from '@/utils/settingsFlags';
+import { ensureDetectorLoaded, runOnDeviceScan } from '@/ml/scanPipeline';
 
 // Optional expo-haptics — no-ops gracefully if module isn't installed.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -56,6 +58,15 @@ const JPEG_QUALITY = 0.55;
 const AUTO_PAUSE_AFTER_NO_NEW_LOCKS_MS = 45_000;
 const SAVE_DEBOUNCE_MS = 2_000;
 
+// Adaptive throttle — stepped back-off when we detect sustained slow frames,
+// a proxy for thermal throttling by iOS (genuinely faster than reading
+// thermalState via a custom native module, same end result). Bypassed when
+// "High performance mode" is on.
+const THROTTLE_LATENCY_WINDOW = 5;
+const THROTTLE_STEP_UP_MS = 500;   // median latency > this → back off
+const THROTTLE_RECOVER_MS = 350;   // median latency < this → speed up
+const THROTTLE_STEPS_MS = [1200, 2400, 4800] as const;
+
 export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
   const [permission, requestPermission] = useCameraPermissions();
   const [isCameraReady, setIsCameraReady] = useState(false);
@@ -70,6 +81,14 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
   const [lastLatencyMs, setLastLatencyMs] = useState<number | null>(null);
   const [sessionRestored, setSessionRestored] = useState(false);
 
+  // Phase 5 — on-device detection state
+  const [onDeviceMode, setOnDeviceMode] = useState(false);
+  const [onDeviceReady, setOnDeviceReady] = useState(false);
+  const [highPerfMode, setHighPerfMode] = useState(false);
+  const [frameIntervalMs, setFrameIntervalMs] = useState<number>(FRAME_INTERVAL_MS);
+  const latencyHistoryRef = useRef<number[]>([]);
+  const throttleStepRef = useRef(0);
+
   const cameraRef = useRef<CameraView>(null);
   const isFocused = useIsFocused();
   const scanLoopRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -78,8 +97,32 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
   const isInflightRef = useRef(false);
   const streamingRef = useRef(isStreaming);
   streamingRef.current = isStreaming;
+  const onDeviceReadyRef = useRef(false);
+  onDeviceReadyRef.current = onDeviceReady;
+  const highPerfRef = useRef(false);
+  highPerfRef.current = highPerfMode;
 
   const addItem = useInventoryStore((s) => s.addItem);
+
+  // ── Phase 5 — read flags + optionally preload the on-device detector ─────
+  useEffect(() => {
+    (async () => {
+      const [onDev, hp] = await Promise.all([
+        readBool(SETTINGS_KEYS.onDeviceDetect),
+        readBool(SETTINGS_KEYS.highPerfMode),
+      ]);
+      setOnDeviceMode(onDev);
+      setHighPerfMode(hp);
+      if (onDev) {
+        const ok = await ensureDetectorLoaded();
+        setOnDeviceReady(ok);
+        if (!ok) {
+          setErrorBanner('On-device model failed to load — using cloud scan.');
+          setTimeout(() => setErrorBanner(null), 4000);
+        }
+      }
+    })();
+  }, []);
 
   // ── Permission ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -130,12 +173,12 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
       if (!streamingRef.current) return;
       if (isInflightRef.current) return;
       void processOneFrame();
-    }, FRAME_INTERVAL_MS);
+    }, frameIntervalMs);
     return () => {
       if (scanLoopRef.current) clearInterval(scanLoopRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFocused, isCameraReady, permission?.granted]);
+  }, [isFocused, isCameraReady, permission?.granted, frameIntervalMs]);
 
   // ── Auto-pause after N seconds of no new locks ────────────────────────────
   useEffect(() => {
@@ -170,20 +213,41 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
       if (manipulated.width && manipulated.height) {
         setSourceAR(manipulated.width / manipulated.height);
       }
-      const base64 = await FileSystem.readAsStringAsync(manipulated.uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
+      // Phase 5: on-device YOLO if enabled + model loaded, else backend.
+      // Fall back transparently if on-device throws.
+      let pieces;
+      const useOnDevice = onDeviceReadyRef.current;
+      if (useOnDevice) {
+        try {
+          const r = await runOnDeviceScan(manipulated.uri);
+          pieces = r.pieces;
+        } catch (e: any) {
+          console.warn('[ContinuousScan] on-device failed; falling back:', e?.message ?? e);
+          const base64 = await FileSystem.readAsStringAsync(manipulated.uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          const res = await apiClient.scanMultiPiece(base64);
+          pieces = res.pieces;
+        }
+      } else {
+        const base64 = await FileSystem.readAsStringAsync(manipulated.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        const res = await apiClient.scanMultiPiece(base64);
+        pieces = res.pieces;
+      }
 
-      const res = await apiClient.scanMultiPiece(base64);
       setErrorBanner(prev =>
         prev && prev.startsWith('Resumed previous session') ? prev : null,
       );
 
       const now = Date.now();
-      setLastLatencyMs(now - tStart);
+      const latencyMs = now - tStart;
+      setLastLatencyMs(latencyMs);
+      applyAdaptiveThrottle(latencyMs);
       setTracks(prev => {
         const { tracks: next, newlyLocked } = updateTracks(
-          prev, res.pieces, now, DEFAULT_TRACKER_OPTS,
+          prev, pieces, now, DEFAULT_TRACKER_OPTS,
         );
         if (newlyLocked.length > 0) {
           lastLockAtRef.current = now;
@@ -200,6 +264,35 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
     } finally {
       isInflightRef.current = false;
       setIsInflight(false);
+    }
+  }, []);
+
+  // Adaptive throttle — if recent median latency indicates the device is
+  // struggling (likely thermal), step the scan interval back. Speeds up
+  // again when latency recovers. Bypassed entirely by high-perf mode.
+  const applyAdaptiveThrottle = useCallback((latencyMs: number) => {
+    if (highPerfRef.current) {
+      if (throttleStepRef.current !== 0) {
+        throttleStepRef.current = 0;
+        setFrameIntervalMs(THROTTLE_STEPS_MS[0]);
+      }
+      return;
+    }
+    const hist = latencyHistoryRef.current;
+    hist.push(latencyMs);
+    if (hist.length > THROTTLE_LATENCY_WINDOW) hist.shift();
+    if (hist.length < THROTTLE_LATENCY_WINDOW) return;
+    const sorted = [...hist].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)];
+    let step = throttleStepRef.current;
+    if (median > THROTTLE_STEP_UP_MS && step < THROTTLE_STEPS_MS.length - 1) {
+      step += 1;
+    } else if (median < THROTTLE_RECOVER_MS && step > 0) {
+      step -= 1;
+    }
+    if (step !== throttleStepRef.current) {
+      throttleStepRef.current = step;
+      setFrameIntervalMs(THROTTLE_STEPS_MS[step]);
     }
   }, []);
 
