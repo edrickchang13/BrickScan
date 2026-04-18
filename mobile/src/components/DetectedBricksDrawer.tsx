@@ -19,7 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { C, R, S, T, shadow } from '@/constants/theme';
 
 export type ContinuousBrickTrack = {
-  /** Stable local ID for the track (hashed from part_num + first-seen ts). */
+  /** Stable local ID for the track. */
   id: string;
   partNum: string;
   partName: string;
@@ -27,11 +27,9 @@ export type ContinuousBrickTrack = {
   colorHex?: string;
   /** Best-guess thumbnail URL (or base64 data URI). */
   thumbnailUrl?: string;
-  /** Count of scan cycles that returned this part_num (consecutive or not). */
-  sightings: number;
-  /** Consecutive scan cycles with this part_num as the top match. */
+  /** Consecutive scan cycles with this part_num as the top match for THIS bbox. */
   consecutiveAgreements: number;
-  /** EMA of confidence over scan cycles. */
+  /** EMA of confidence across sightings. */
   fusedConfidence: number;
   /** When the track was first seen (ms epoch). */
   firstSeenAt: number;

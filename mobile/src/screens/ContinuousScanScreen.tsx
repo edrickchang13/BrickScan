@@ -1,74 +1,74 @@
 /**
- * ContinuousScanScreen — Phase 1 of the live-feed scan experience.
+ * ContinuousScanScreen — live-feed brick scanner with per-bbox IoU tracking.
  *
- * Flow:
- *   1. Camera opens full-screen.
- *   2. Every ~1200ms, grab a frame (lightweight JPEG) and POST to /api/scan/pile.
- *   3. Results accumulate into `tracks`. Each tracked part_num keeps a history
- *      of sightings and a fused confidence (EMA).
- *   4. A brick "locks" when it appears as a top match in `LOCK_AGREEMENT_COUNT`
- *      consecutive scans AND fused confidence ≥ LOCK_CONFIDENCE.
- *   5. Locked + pending bricks appear in the top-right DetectedBricksDrawer.
- *   6. User taps "Done" to navigate to MultiResultScreen with the locked
- *      inventory pre-populated, or "Pause" to freeze the stream.
+ * Phase 2 upgrades over Phase 1:
+ *  - Uses /api/local-inventory/scan-multi (per-bbox detections w/ bboxes)
+ *    instead of the aggregated /api/scan/pile endpoint.
+ *  - Each detected bbox gets a client-side persistent track ID assigned by
+ *    IoU matching. Two separate physical bricks → two separate tracks even
+ *    if they're the same part_num.
+ *  - Live bounding box overlay on the camera preview (BboxOverlay).
+ *  - Locking happens per-track (per-bbox), not per-part_num.
  *
- * This is the MVP — no on-device YOLO yet, no per-bbox tracking. Each frame
- * is a fresh pile scan; we fuse by part_num across frames. Works great for
- * the common "bricks on a table, sweep camera around" use case.
+ * Flow per tick (every FRAME_INTERVAL_MS):
+ *  1. takePictureAsync → resize → base64.
+ *  2. POST to scan-multi, get DetectedPiece[] with bboxes.
+ *  3. Feed into updateTracks() — assigns / extends / spawns tracks.
+ *  4. Render: bboxes on preview, drawer list on top-right.
+ *  5. On newly-locked tracks: haptic pulse + last-lock timestamp.
+ *
+ * The tracker lives in @/utils/bboxTracker so it can be unit-tested in
+ * isolation from React state + camera plumbing.
  */
 import React, {
   useCallback, useEffect, useMemo, useRef, useState,
 } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, StatusBar, Alert,
-  ActivityIndicator, Animated, Platform,
+  ActivityIndicator, Platform,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system/legacy';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { ScanStackParamList } from '@/types';
+import { apiClient } from '@/services/api';
+import { C, R, S, shadow } from '@/constants/theme';
+import {
+  DetectedBricksDrawer, ContinuousBrickTrack,
+} from '@/components/DetectedBricksDrawer';
+import { BboxOverlay, BboxTrackVisual } from '@/components/BboxOverlay';
+import {
+  updateTracks, BrickTrack, DEFAULT_TRACKER_OPTS,
+} from '@/utils/bboxTracker';
 
-// Optional: expo-haptics is nice-to-have. Falls back to a no-op if not installed.
+// Optional expo-haptics — no-ops gracefully if module isn't installed.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let Haptics: any = null;
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   Haptics = require('expo-haptics');
-} catch {
-  /* haptics unavailable — silent fallback */
-}
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { ScanStackParamList } from '@/types';
-import { apiClient, PileResult } from '@/services/api';
-import { C, R, S, shadow } from '@/constants/theme';
-import {
-  DetectedBricksDrawer,
-  ContinuousBrickTrack,
-} from '@/components/DetectedBricksDrawer';
+} catch {}
 
 type Props = NativeStackScreenProps<ScanStackParamList, 'ContinuousScanScreen'>;
 
-// Tuning constants — exposed at the top so we can move them to a config file
-// later if we want per-device or A/B tuning.
-const FRAME_INTERVAL_MS = 1200;            // how often we try to grab a frame
-const LOCK_AGREEMENT_COUNT = 3;            // consecutive frames with same top-1
-const LOCK_CONFIDENCE = 0.85;              // fused (EMA) confidence threshold
-const EMA_ALPHA = 0.4;                      // smoothing — closer to 1 = less smoothing
-const TRACK_TIMEOUT_MS = 15_000;           // forget a track after N ms of no sightings
-const MAX_IMAGE_DIM = 720;                 // resize frames for speed
-const JPEG_QUALITY = 0.55;                 // 0-1
-const AUTO_PAUSE_AFTER_NO_NEW_LOCKS_MS = 45_000;  // stop if nothing new for 45s
+// ── Tunable constants (top-of-file so they're easy to move to config later) ──
+const FRAME_INTERVAL_MS = 1200;
+const MAX_IMAGE_DIM = 720;
+const JPEG_QUALITY = 0.55;
+const AUTO_PAUSE_AFTER_NO_NEW_LOCKS_MS = 45_000;
 
 export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
   const [permission, requestPermission] = useCameraPermissions();
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [isStreaming, setIsStreaming] = useState(true);
   const [isInflight, setIsInflight] = useState(false);
-  const [tracks, setTracks] = useState<ContinuousBrickTrack[]>([]);
+  const [tracks, setTracks] = useState<BrickTrack[]>([]);
   const [drawerExpanded, setDrawerExpanded] = useState(false);
-  const [lastScanAt, setLastScanAt] = useState<number | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
+  const [sourceAR, setSourceAR] = useState<number | undefined>(undefined);
 
   const cameraRef = useRef<CameraView>(null);
   const isFocused = useIsFocused();
@@ -78,17 +78,17 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
   const streamingRef = useRef(isStreaming);
   streamingRef.current = isStreaming;
 
-  // Permission gate
+  // ── Permissions ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (!permission) requestPermission();
   }, [permission]);
 
-  // Loop: grab-frame → scan → fuse → repeat, while this screen is focused
+  // ── Main scan loop ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isFocused || !isCameraReady || !permission?.granted) return;
     scanLoopRef.current = setInterval(() => {
       if (!streamingRef.current) return;
-      if (isInflightRef.current) return;   // skip if the previous scan hasn't finished
+      if (isInflightRef.current) return;  // skip if previous cycle still running
       void processOneFrame();
     }, FRAME_INTERVAL_MS);
     return () => {
@@ -97,28 +97,17 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFocused, isCameraReady, permission?.granted]);
 
-  // Auto-pause when nothing new has locked for a while
+  // ── Auto-pause + GC (outside the inner loop to keep it cheap) ─────────────
   useEffect(() => {
     if (!isStreaming) return;
-    const interval = setInterval(() => {
+    const id = setInterval(() => {
       if (Date.now() - lastLockAtRef.current > AUTO_PAUSE_AFTER_NO_NEW_LOCKS_MS) {
         setIsStreaming(false);
         setErrorBanner('Paused — no new bricks detected for a while. Tap resume.');
       }
-    }, 5000);
-    return () => clearInterval(interval);
+    }, 5_000);
+    return () => clearInterval(id);
   }, [isStreaming]);
-
-  // Forget stale tracks that haven't been seen recently (unless already locked)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const now = Date.now();
-      setTracks(prev =>
-        prev.filter(t => t.lockedAt !== null || now - t.firstSeenAt < TRACK_TIMEOUT_MS)
-      );
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
 
   const processOneFrame = useCallback(async () => {
     if (!cameraRef.current) return;
@@ -137,67 +126,30 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
         [{ resize: { width: MAX_IMAGE_DIM } }],
         { compress: JPEG_QUALITY, format: ImageManipulator.SaveFormat.JPEG },
       );
+      if (manipulated.width && manipulated.height) {
+        setSourceAR(manipulated.width / manipulated.height);
+      }
       const base64 = await FileSystem.readAsStringAsync(manipulated.uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      const results = await apiClient.scanPile(base64);
-      const now = Date.now();
-      setLastScanAt(now);
+      const res = await apiClient.scanMultiPiece(base64);
       setErrorBanner(null);
 
-      if (!results || results.length === 0) {
-        // No hits this frame — decay confidence on pending tracks slightly
-        setTracks(prev => prev.map(t =>
-          t.lockedAt !== null
-            ? t
-            : { ...t, consecutiveAgreements: 0, fusedConfidence: t.fusedConfidence * 0.9 }
-        ));
-        return;
-      }
-
-      // Fuse: for each scan result, update matching track OR create a new one
+      const now = Date.now();
       setTracks(prev => {
-        const byKey = new Map(prev.map(t => [trackKey(t.partNum, t.colorName), t]));
-        const seenKeys = new Set<string>();
-
-        for (const r of results) {
-          const key = trackKey(r.partNum, r.colorName);
-          seenKeys.add(key);
-          const existing = byKey.get(key);
-          if (existing) {
-            byKey.set(key, fuseTrack(existing, r, now));
-          } else {
-            byKey.set(key, newTrack(r, now));
-          }
-        }
-
-        // Decay pending tracks that WEREN'T seen this frame
-        for (const [key, t] of byKey) {
-          if (!seenKeys.has(key) && t.lockedAt === null) {
-            byKey.set(key, {
-              ...t,
-              consecutiveAgreements: 0,
-              fusedConfidence: t.fusedConfidence * 0.9,
-            });
-          }
-        }
-
-        const nextList = Array.from(byKey.values());
-        // Trigger haptic + update "last lock" timestamp if anything new locked this cycle
-        const newlyLocked = nextList.filter(t =>
-          t.lockedAt !== null && !prev.find(p => p.id === t.id && p.lockedAt !== null)
+        const { tracks: next, newlyLocked } = updateTracks(
+          prev, res.pieces, now, DEFAULT_TRACKER_OPTS,
         );
         if (newlyLocked.length > 0) {
-          lastLockAtRef.current = Date.now();
+          lastLockAtRef.current = now;
           if (Haptics?.notificationAsync) {
             void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           }
         }
-        return nextList;
+        return next;
       });
     } catch (err: any) {
-      // Don't spam the banner on transient network errors — just log.
       if (err?.message && !/timeout|network|aborted/i.test(err.message)) {
         setErrorBanner(`Scan error: ${err.message}`);
       }
@@ -211,9 +163,7 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
     setTracks(prev => prev.filter(t => t.id !== id));
   }, []);
 
-  const handleClear = useCallback(() => {
-    setTracks([]);
-  }, []);
+  const handleClear = useCallback(() => setTracks([]), []);
 
   const lockedTracks = useMemo(
     () => tracks.filter(t => t.lockedAt !== null),
@@ -249,6 +199,31 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
     });
   }, [lockedTracks, navigation]);
 
+  // ── Derived props for child components ────────────────────────────────────
+  const bboxVisuals = useMemo<BboxTrackVisual[]>(() => tracks.map(t => ({
+    id: t.id,
+    bbox: t.bbox,
+    partNum: t.partNum,
+    confidence: t.fusedConfidence,
+    state:
+      t.lockedAt !== null ? 'locked'
+      : (Date.now() - t.lastSeenAt > FRAME_INTERVAL_MS * 2) ? 'decaying'
+      : 'pending',
+  })), [tracks]);
+
+  const drawerTracks = useMemo<ContinuousBrickTrack[]>(() => tracks.map(t => ({
+    id: t.id,
+    partNum: t.partNum,
+    partName: t.partName,
+    colorName: t.colorName,
+    colorHex: t.colorHex,
+    consecutiveAgreements: t.consecutiveAgreements,
+    fusedConfidence: t.fusedConfidence,
+    firstSeenAt: t.firstSeenAt,
+    lockedAt: t.lockedAt,
+  })), [tracks]);
+
+  // ── Render ────────────────────────────────────────────────────────────────
   if (!permission) {
     return (
       <View style={styles.center}>
@@ -279,7 +254,10 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
         animateShutter={false}
       />
 
-      {/* Top bar: back, live indicator, detection drawer */}
+      {/* Live bbox overlay */}
+      <BboxOverlay tracks={bboxVisuals} sourceAspectRatio={sourceAR} />
+
+      {/* Top bar */}
       <View style={styles.topBar}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
@@ -302,7 +280,7 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
         </View>
 
         <DetectedBricksDrawer
-          tracks={tracks}
+          tracks={drawerTracks}
           expanded={drawerExpanded}
           onToggle={() => setDrawerExpanded(x => !x)}
           onRemove={handleRemove}
@@ -318,7 +296,7 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
         </View>
       )}
 
-      {/* Bottom control bar */}
+      {/* Bottom bar */}
       <View style={styles.bottomBar}>
         <TouchableOpacity
           style={styles.controlBtn}
@@ -334,7 +312,10 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.doneBtn, lockedTracks.length === 0 && styles.doneBtnDisabled]}
+          style={[
+            styles.doneBtn,
+            lockedTracks.length === 0 && styles.doneBtnDisabled,
+          ]}
           onPress={handleDone}
           activeOpacity={0.85}
         >
@@ -347,53 +328,6 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
     </View>
   );
 };
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function trackKey(partNum: string, colorName?: string): string {
-  return `${partNum}|${colorName ?? ''}`;
-}
-
-function newTrack(r: PileResult, now: number): ContinuousBrickTrack {
-  return {
-    id: `${r.partNum}_${now}`,
-    partNum: r.partNum,
-    partName: r.partName,
-    colorName: r.colorName,
-    thumbnailUrl: r.cropImageBase64
-      ? `data:image/jpeg;base64,${r.cropImageBase64}`
-      : undefined,
-    sightings: 1,
-    consecutiveAgreements: 1,
-    fusedConfidence: r.confidence,
-    firstSeenAt: now,
-    lockedAt: null,
-  };
-}
-
-function fuseTrack(
-  t: ContinuousBrickTrack,
-  r: PileResult,
-  now: number,
-): ContinuousBrickTrack {
-  const sightings = t.sightings + 1;
-  const consecutiveAgreements = t.consecutiveAgreements + 1;
-  const fusedConfidence = EMA_ALPHA * r.confidence + (1 - EMA_ALPHA) * t.fusedConfidence;
-  const isLocked = t.lockedAt !== null ||
-    (consecutiveAgreements >= LOCK_AGREEMENT_COUNT && fusedConfidence >= LOCK_CONFIDENCE);
-  return {
-    ...t,
-    sightings,
-    consecutiveAgreements,
-    fusedConfidence,
-    thumbnailUrl: t.thumbnailUrl ?? (r.cropImageBase64
-      ? `data:image/jpeg;base64,${r.cropImageBase64}`
-      : undefined),
-    lockedAt: isLocked && t.lockedAt === null ? now : t.lockedAt,
-  };
-}
-
-// ─── Styles ──────────────────────────────────────────────────────────────────
 
 const TOP_INSET = Platform.OS === 'ios' ? 52 : 32;
 
