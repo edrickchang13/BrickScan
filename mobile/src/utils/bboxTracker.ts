@@ -19,6 +19,9 @@
  */
 
 import type { DetectedPiece } from '@/types';
+import {
+  initBboxKalman, stepBboxKalman, kalmanBbox, KalmanBboxState,
+} from './kalmanBbox';
 
 export type Bbox = [number, number, number, number]; // x1, y1, x2, y2
 
@@ -43,6 +46,8 @@ export interface BrickTrack {
   lockedAt: number | null;
   /** Monotonic counter — bumped each time track is updated. Used by UI keys. */
   version: number;
+  /** Internal — Kalman filter state per bbox coord. Hidden from UI consumers. */
+  kalman: KalmanBboxState;
 }
 
 export interface TrackerOptions {
@@ -158,13 +163,18 @@ export function updateTracks(
       const shouldLock = t.lockedAt === null
         && consecutive >= opts.lockAgreementCount
         && fused >= opts.lockConfidence;
+      // Kalman smooth the measured bbox for UI display. Raw measurement fed
+      // back into the filter, but the smoothed position is what gets
+      // rendered — removes frame-to-frame jitter.
+      const nextKalman = stepBboxKalman(t.kalman, det.bbox as Bbox, now);
       const updated: BrickTrack = {
         ...t,
         partNum: topPart || t.partNum,
         partName: primary?.partName || t.partName,
         colorName: primary?.colorName || t.colorName,
         colorHex: primary?.colorHex || t.colorHex,
-        bbox: det.bbox as Bbox,
+        bbox: kalmanBbox(nextKalman),
+        kalman: nextKalman,
         history: [
           { partNum: topPart, confidence: conf, ts: now },
           ...t.history.slice(0, 14),
@@ -208,6 +218,7 @@ export function updateTracks(
       colorName: primary.colorName,
       colorHex: primary.colorHex,
       bbox: det.bbox as Bbox,
+      kalman: initBboxKalman(det.bbox as Bbox, now),
       history: [{
         partNum: primary.partNum,
         confidence: primary.confidence ?? 0,

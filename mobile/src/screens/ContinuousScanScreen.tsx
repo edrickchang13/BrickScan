@@ -1,31 +1,24 @@
 /**
- * ContinuousScanScreen — live-feed brick scanner with per-bbox IoU tracking.
+ * ContinuousScanScreen — live-feed brick scanner.
  *
- * Phase 2 upgrades over Phase 1:
- *  - Uses /api/local-inventory/scan-multi (per-bbox detections w/ bboxes)
- *    instead of the aggregated /api/scan/pile endpoint.
- *  - Each detected bbox gets a client-side persistent track ID assigned by
- *    IoU matching. Two separate physical bricks → two separate tracks even
- *    if they're the same part_num.
- *  - Live bounding box overlay on the camera preview (BboxOverlay).
- *  - Locking happens per-track (per-bbox), not per-part_num.
+ * Phase 1 shipped: throttled per-frame scan + EMA fusion by part_num.
+ * Phase 2 shipped: per-bbox IoU tracking + live bbox overlay.
+ * Phase 3 (this rev): Kalman smoothing (tracker-internal), session persistence
+ *         via AsyncStorage, dev-mode performance telemetry, keep-existing
+ *         ascending-track-count throttling stays.
+ * Phase 4 (this rev): multi-brick confirmation modal w/ editable qtys, drawer
+ *         sort modes, polished AR-style bbox labels (BboxOverlay).
  *
- * Flow per tick (every FRAME_INTERVAL_MS):
- *  1. takePictureAsync → resize → base64.
- *  2. POST to scan-multi, get DetectedPiece[] with bboxes.
- *  3. Feed into updateTracks() — assigns / extends / spawns tracks.
- *  4. Render: bboxes on preview, drawer list on top-right.
- *  5. On newly-locked tracks: haptic pulse + last-lock timestamp.
- *
- * The tracker lives in @/utils/bboxTracker so it can be unit-tested in
- * isolation from React state + camera plumbing.
+ * True on-device YOLO inference is deferred to Phase 5 — the existing 167MB
+ * ONNX needs quantization and a native onnxruntime bridge before it's
+ * mobile-deployable. See docs/CONTINUOUS_SCAN_PHASE5.md for plan.
  */
 import React, {
   useCallback, useEffect, useMemo, useRef, useState,
 } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, StatusBar, Alert,
-  ActivityIndicator, Platform,
+  ActivityIndicator, Platform, AppState,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useIsFocused } from '@react-navigation/native';
@@ -37,12 +30,15 @@ import type { ScanStackParamList } from '@/types';
 import { apiClient } from '@/services/api';
 import { C, R, S, shadow } from '@/constants/theme';
 import {
-  DetectedBricksDrawer, ContinuousBrickTrack,
+  DetectedBricksDrawer, ContinuousBrickTrack, DrawerSortMode,
 } from '@/components/DetectedBricksDrawer';
 import { BboxOverlay, BboxTrackVisual } from '@/components/BboxOverlay';
+import { ConfirmBricksModal, ConfirmedBrickEntry } from '@/components/ConfirmBricksModal';
 import {
   updateTracks, BrickTrack, DEFAULT_TRACKER_OPTS,
 } from '@/utils/bboxTracker';
+import { saveSession, loadSession, clearSession } from '@/utils/scanSession';
+import { useInventoryStore } from '@/store/inventoryStore';
 
 // Optional expo-haptics — no-ops gracefully if module isn't installed.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -54,11 +50,11 @@ try {
 
 type Props = NativeStackScreenProps<ScanStackParamList, 'ContinuousScanScreen'>;
 
-// ── Tunable constants (top-of-file so they're easy to move to config later) ──
 const FRAME_INTERVAL_MS = 1200;
 const MAX_IMAGE_DIM = 720;
 const JPEG_QUALITY = 0.55;
 const AUTO_PAUSE_AFTER_NO_NEW_LOCKS_MS = 45_000;
+const SAVE_DEBOUNCE_MS = 2_000;
 
 export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
   const [permission, requestPermission] = useCameraPermissions();
@@ -67,28 +63,72 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
   const [isInflight, setIsInflight] = useState(false);
   const [tracks, setTracks] = useState<BrickTrack[]>([]);
   const [drawerExpanded, setDrawerExpanded] = useState(false);
+  const [sortMode, setSortMode] = useState<DrawerSortMode>('recent');
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [sourceAR, setSourceAR] = useState<number | undefined>(undefined);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [lastLatencyMs, setLastLatencyMs] = useState<number | null>(null);
+  const [sessionRestored, setSessionRestored] = useState(false);
 
   const cameraRef = useRef<CameraView>(null);
   const isFocused = useIsFocused();
   const scanLoopRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const saveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastLockAtRef = useRef<number>(Date.now());
   const isInflightRef = useRef(false);
   const streamingRef = useRef(isStreaming);
   streamingRef.current = isStreaming;
 
-  // ── Permissions ───────────────────────────────────────────────────────────
+  const addItem = useInventoryStore((s) => s.addItem);
+
+  // ── Permission ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!permission) requestPermission();
   }, [permission]);
+
+  // ── Session restore on mount ──────────────────────────────────────────────
+  useEffect(() => {
+    (async () => {
+      const restored = await loadSession();
+      if (restored && restored.length > 0) {
+        setTracks(restored);
+        setSessionRestored(true);
+        setErrorBanner(
+          `Resumed previous session — ${restored.length} brick${restored.length === 1 ? '' : 's'} restored.`,
+        );
+        setTimeout(() => setErrorBanner(null), 4000);
+      }
+    })();
+  }, []);
+
+  // ── Persist tracks on change (debounced) ──────────────────────────────────
+  useEffect(() => {
+    if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
+    saveDebounceRef.current = setTimeout(() => {
+      void saveSession(tracks);
+    }, SAVE_DEBOUNCE_MS);
+    return () => {
+      if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
+    };
+  }, [tracks]);
+
+  // Flush a save when the app backgrounds
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'background' || state === 'inactive') {
+        void saveSession(tracks);
+      }
+    });
+    return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tracks]);
 
   // ── Main scan loop ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isFocused || !isCameraReady || !permission?.granted) return;
     scanLoopRef.current = setInterval(() => {
       if (!streamingRef.current) return;
-      if (isInflightRef.current) return;  // skip if previous cycle still running
+      if (isInflightRef.current) return;
       void processOneFrame();
     }, FRAME_INTERVAL_MS);
     return () => {
@@ -97,7 +137,7 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFocused, isCameraReady, permission?.granted]);
 
-  // ── Auto-pause + GC (outside the inner loop to keep it cheap) ─────────────
+  // ── Auto-pause after N seconds of no new locks ────────────────────────────
   useEffect(() => {
     if (!isStreaming) return;
     const id = setInterval(() => {
@@ -113,6 +153,7 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
     if (!cameraRef.current) return;
     isInflightRef.current = true;
     setIsInflight(true);
+    const tStart = Date.now();
     try {
       const photo = await cameraRef.current.takePictureAsync({
         quality: JPEG_QUALITY,
@@ -134,9 +175,12 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
       });
 
       const res = await apiClient.scanMultiPiece(base64);
-      setErrorBanner(null);
+      setErrorBanner(prev =>
+        prev && prev.startsWith('Resumed previous session') ? prev : null,
+      );
 
       const now = Date.now();
+      setLastLatencyMs(now - tStart);
       setTracks(prev => {
         const { tracks: next, newlyLocked } = updateTracks(
           prev, res.pieces, now, DEFAULT_TRACKER_OPTS,
@@ -163,7 +207,10 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
     setTracks(prev => prev.filter(t => t.id !== id));
   }, []);
 
-  const handleClear = useCallback(() => setTracks([]), []);
+  const handleClear = useCallback(() => {
+    setTracks([]);
+    void clearSession();
+  }, []);
 
   const lockedTracks = useMemo(
     () => tracks.filter(t => t.lockedAt !== null),
@@ -179,27 +226,26 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
       return;
     }
     setIsStreaming(false);
-    navigation.navigate('MultiResultScreen', {
-      pieces: lockedTracks.map((t, i) => {
-        const primary = {
-          partNum: t.partNum,
-          partName: t.partName,
-          colorId: '',
-          colorName: t.colorName ?? '',
-          colorHex: t.colorHex ?? '',
-          confidence: t.fusedConfidence,
-          source: 'continuous_scan',
-        };
-        return {
-          pieceIndex: i,
-          predictions: [primary],
-          primaryPrediction: primary,
-        };
-      }),
-    });
-  }, [lockedTracks, navigation]);
+    setShowConfirm(true);
+  }, [lockedTracks]);
 
-  // ── Derived props for child components ────────────────────────────────────
+  const handleConfirm = useCallback(async (entries: ConfirmedBrickEntry[]) => {
+    // Commit to inventory via the Zustand store — same path single-scan uses.
+    // addItem signature: (partNum, colorId, quantity, colorName?, colorHex?).
+    for (const entry of entries) {
+      try {
+        await addItem(entry.partNum, '', entry.quantity, entry.colorName ?? '', '');
+      } catch {
+        // Individual add failures are non-fatal; continue with the rest.
+      }
+    }
+    await clearSession();
+    setShowConfirm(false);
+    setTracks([]);
+    navigation.goBack();
+  }, [addItem, navigation]);
+
+  // ── Derived props ─────────────────────────────────────────────────────────
   const bboxVisuals = useMemo<BboxTrackVisual[]>(() => tracks.map(t => ({
     id: t.id,
     bbox: t.bbox,
@@ -254,10 +300,8 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
         animateShutter={false}
       />
 
-      {/* Live bbox overlay */}
       <BboxOverlay tracks={bboxVisuals} sourceAspectRatio={sourceAR} />
 
-      {/* Top bar */}
       <View style={styles.topBar}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
@@ -277,26 +321,32 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
               ? (isInflight ? 'SCANNING…' : 'LIVE')
               : 'PAUSED'}
           </Text>
+          {__DEV__ && lastLatencyMs !== null && (
+            <Text style={styles.perfText}>{lastLatencyMs}ms</Text>
+          )}
         </View>
 
         <DetectedBricksDrawer
           tracks={drawerTracks}
           expanded={drawerExpanded}
+          sortMode={sortMode}
+          onSortModeChange={setSortMode}
           onToggle={() => setDrawerExpanded(x => !x)}
           onRemove={handleRemove}
           onClear={handleClear}
         />
       </View>
 
-      {/* Error banner */}
       {errorBanner && (
-        <View style={styles.errorBanner}>
+        <View style={[
+          styles.errorBanner,
+          sessionRestored && { backgroundColor: 'rgba(22, 163, 74, 0.9)' },
+        ]}>
           <Ionicons name="information-circle" size={14} color={C.white} />
           <Text style={styles.errorText}>{errorBanner}</Text>
         </View>
       )}
 
-      {/* Bottom bar */}
       <View style={styles.bottomBar}>
         <TouchableOpacity
           style={styles.controlBtn}
@@ -325,6 +375,16 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
           </Text>
         </TouchableOpacity>
       </View>
+
+      <ConfirmBricksModal
+        visible={showConfirm}
+        tracks={drawerTracks.filter(t => t.lockedAt !== null)}
+        onCancel={() => {
+          setShowConfirm(false);
+          setIsStreaming(true);
+        }}
+        onConfirm={handleConfirm}
+      />
     </View>
   );
 };
@@ -384,6 +444,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1,
+  },
+  perfText: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 10,
+    marginLeft: 6,
+    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
   },
 
   errorBanner: {

@@ -37,16 +37,48 @@ export type ContinuousBrickTrack = {
   lockedAt: number | null;
 };
 
+export type DrawerSortMode = 'recent' | 'confidence' | 'part' | 'color';
+
 interface Props {
   tracks: ContinuousBrickTrack[];
   expanded: boolean;
+  sortMode?: DrawerSortMode;
+  onSortModeChange?: (m: DrawerSortMode) => void;
   onToggle: () => void;
   onRemove: (id: string) => void;
   onClear: () => void;
 }
 
+const SORT_OPTIONS: { key: DrawerSortMode; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { key: 'recent',     label: 'Recent',   icon: 'time-outline' },
+  { key: 'confidence', label: 'Confidence', icon: 'speedometer-outline' },
+  { key: 'part',       label: 'Part #',   icon: 'pricetag-outline' },
+  { key: 'color',      label: 'Colour',   icon: 'color-palette-outline' },
+];
+
+function sortTracks(tracks: ContinuousBrickTrack[], mode: DrawerSortMode): ContinuousBrickTrack[] {
+  const copy = tracks.slice();
+  switch (mode) {
+    case 'confidence':
+      copy.sort((a, b) => b.fusedConfidence - a.fusedConfidence);
+      break;
+    case 'part':
+      copy.sort((a, b) => a.partNum.localeCompare(b.partNum, undefined, { numeric: true }));
+      break;
+    case 'color':
+      copy.sort((a, b) => (a.colorName ?? 'zzz').localeCompare(b.colorName ?? 'zzz'));
+      break;
+    case 'recent':
+    default:
+      copy.sort((a, b) => (b.lockedAt ?? b.firstSeenAt) - (a.lockedAt ?? a.firstSeenAt));
+      break;
+  }
+  return copy;
+}
+
 export const DetectedBricksDrawer: React.FC<Props> = ({
-  tracks, expanded, onToggle, onRemove, onClear,
+  tracks, expanded, sortMode = 'recent', onSortModeChange,
+  onToggle, onRemove, onClear,
 }) => {
   const lockedCount = tracks.filter(t => t.lockedAt !== null).length;
   const pendingCount = tracks.length - lockedCount;
@@ -95,18 +127,44 @@ export const DetectedBricksDrawer: React.FC<Props> = ({
           </Text>
         </View>
       ) : (
-        <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
-          {tracks
-            .slice()
-            .sort((a, b) => (b.lockedAt ?? b.firstSeenAt) - (a.lockedAt ?? a.firstSeenAt))
-            .map(track => (
+        <>
+          {onSortModeChange && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.sortRow}
+            >
+              {SORT_OPTIONS.map(opt => {
+                const active = sortMode === opt.key;
+                return (
+                  <TouchableOpacity
+                    key={opt.key}
+                    onPress={() => onSortModeChange(opt.key)}
+                    style={[styles.sortChip, active && styles.sortChipActive]}
+                  >
+                    <Ionicons
+                      name={opt.icon}
+                      size={12}
+                      color={active ? C.white : C.textSub}
+                    />
+                    <Text style={[styles.sortLabel, active && styles.sortLabelActive]}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          )}
+          <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
+            {sortTracks(tracks, sortMode).map(track => (
               <TrackRow
                 key={track.id}
                 track={track}
                 onRemove={() => onRemove(track.id)}
               />
             ))}
-        </ScrollView>
+          </ScrollView>
+        </>
       )}
     </View>
   );
@@ -196,7 +254,25 @@ const styles = StyleSheet.create({
   headerBtn: { paddingHorizontal: 6, paddingVertical: 2 },
   clearText: { color: C.red, fontSize: 13, fontWeight: '600' },
 
-  list: { maxHeight: 420 },
+  sortRow: {
+    paddingHorizontal: S.md,
+    paddingVertical: 6,
+    backgroundColor: C.bg,
+  },
+  sortChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: R.sm,
+    marginRight: 6,
+    backgroundColor: C.cardAlt,
+  },
+  sortChipActive: { backgroundColor: C.red },
+  sortLabel: { fontSize: 11, color: C.textSub, marginLeft: 3, fontWeight: '600' },
+  sortLabelActive: { color: C.white },
+
+  list: { maxHeight: 380 },
   emptyState: {
     alignItems: 'center',
     padding: S.lg,
