@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { C, R, S, T, shadow } from '@/constants/theme';
+import { ColorSwatch } from './ColorSwatch';
 
 export type ContinuousBrickTrack = {
   /** Stable local ID for the track. */
@@ -197,9 +198,15 @@ const TrackRow: React.FC<{
         <Text style={styles.partName} numberOfLines={1}>
           {track.partName}
         </Text>
-        {track.colorName && (
-          <Text style={styles.colorText} numberOfLines={1}>{track.colorName}</Text>
-        )}
+        {track.colorName ? (
+          <ColorSwatch
+            colorName={track.colorName}
+            colorHex={track.colorHex}
+            confidence={track.fusedConfidence}
+            size={10}
+            style={{ marginTop: 2 }}
+          />
+        ) : null}
       </View>
 
       <View style={styles.rowRight}>

@@ -13,12 +13,15 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { C, R, S, shadow } from '@/constants/theme';
+import { ColorSwatch } from './ColorSwatch';
 import type { ContinuousBrickTrack } from './DetectedBricksDrawer';
 
 export type ConfirmedBrickEntry = {
   partNum: string;
   partName: string;
   colorName?: string;
+  colorHex?: string;
+  isTransparent?: boolean;
   quantity: number;
   confidence: number;
 };
@@ -48,6 +51,7 @@ export const ConfirmBricksModal: React.FC<Props> = ({
           partNum: t.partNum,
           partName: t.partName,
           colorName: t.colorName,
+          colorHex: t.colorHex,
           quantity: 1,
           confidence: t.fusedConfidence,
         });
@@ -115,7 +119,14 @@ export const ConfirmBricksModal: React.FC<Props> = ({
                   <Text style={styles.partName} numberOfLines={1}>{entry.partName}</Text>
                   <View style={styles.rowMetaRow}>
                     {entry.colorName ? (
-                      <Text style={styles.metaText}>{entry.colorName}</Text>
+                      <ColorSwatch
+                        colorName={entry.colorName}
+                        colorHex={entry.colorHex}
+                        isTransparent={entry.isTransparent}
+                        confidence={entry.confidence}
+                        size={11}
+                        style={{ marginRight: 8 }}
+                      />
                     ) : null}
                     <Text style={styles.metaText}>
                       {Math.round(entry.confidence * 100)}% conf

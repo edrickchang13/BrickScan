@@ -330,6 +330,32 @@ async def hybrid_predict(
         if scan_rgb is not None:
             merged = rerank_predictions_by_color(merged, scan_rgb)
 
+    # B4 — ML colour fill: when the colour classifier is loaded, run it once
+    # over the scan image and authoritatively fill any prediction missing a
+    # colour_id / colour_name. We always overwrite Brickognize / Gemini's
+    # colour fields when they disagree with our top-1 ML colour at >75%
+    # confidence — empirically more reliable than upstream sources, which
+    # often guess from a list of common colours rather than the actual photo.
+    if merged:
+        try:
+            from app.ml.model_manager import ModelManager
+            mm = ModelManager.get()
+            if mm.color_available:
+                color_top = mm.predict_color(image_bytes, top_k=1)
+                if color_top:
+                    primary = color_top[0]
+                    high_conf = float(primary.get("confidence", 0)) >= 0.75
+                    for p in merged:
+                        # Always populate when missing
+                        missing = not p.get("color_id") or not p.get("color_name")
+                        if missing or high_conf:
+                            p["color_id"]    = primary["color_id"]
+                            p["color_name"]  = primary["color_name"]
+                            p["color_hex"]   = primary["color_hex"]
+                            p["color_confidence"] = primary["confidence"]
+        except Exception as e:
+            logger.debug("ML colour fill skipped (non-fatal): %s", e)
+
     # Temperature calibration — applied LAST so per-source temperatures act
     # on the final, merged confidences. This is post-hoc scaling only; it
     # cannot make a wrong prediction right, but it can prevent Gemini's
