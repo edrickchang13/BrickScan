@@ -63,6 +63,19 @@ const SLIDES: Slide[] = [
       { icon: 'download-outline', color: '#059669', label: 'Export your inventory as CSV' },
     ],
   },
+  {
+    id: 'live-and-insights',
+    icon: 'flash',
+    iconColor: '#DB2777',
+    iconBg: '#FDF2F8',
+    title: 'Live Scan & Insights',
+    subtitle: 'Hold the camera over a pile and bricks lock in as you sweep — no taps needed. See what you can build and how your collection breaks down.',
+    features: [
+      { icon: 'pulse', color: '#DB2777', label: 'Live multi-brick tracking' },
+      { icon: 'checkmark-done-circle', color: '#059669', label: 'Auto-confirm at high confidence' },
+      { icon: 'bar-chart', color: '#2563EB', label: 'Collection analytics by theme/year' },
+    ],
+  },
 ];
 
 export const OnboardingScreen: React.FC = () => {

@@ -228,6 +228,7 @@ export type ScanStackParamList = {
   FeedbackStatsScreen: undefined;
   ReviewQueueScreen: undefined;
   ContinuousScanScreen: undefined;
+  CollectionAnalyticsScreen: undefined;
 };
 
 export type SetsStackParamList = {

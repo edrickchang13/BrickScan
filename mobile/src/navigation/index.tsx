@@ -12,6 +12,7 @@ import { ScanResultScreen } from '@/screens/ScanResultScreen';
 import { FeedbackStatsScreen } from '@/screens/FeedbackStatsScreen';
 import { ReviewQueueScreen } from '@/screens/ReviewQueueScreen';
 import { ContinuousScanScreen } from '@/screens/ContinuousScanScreen';
+import { CollectionAnalyticsScreen } from '@/screens/CollectionAnalyticsScreen';
 import { MultiResultScreen } from '@/screens/MultiResultScreen';
 import PileScanScreen from '@/screens/PileScanScreen';
 import { ScanHistoryScreen } from '@/screens/ScanHistoryScreen';
@@ -127,6 +128,11 @@ const ScanStackNavigator = () => (
     <ScanStack.Screen
       name="ContinuousScanScreen"
       component={ContinuousScanScreen}
+      options={{ headerShown: false }}
+    />
+    <ScanStack.Screen
+      name="CollectionAnalyticsScreen"
+      component={CollectionAnalyticsScreen}
       options={{ headerShown: false }}
     />
   </ScanStack.Navigator>

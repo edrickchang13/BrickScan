@@ -118,13 +118,22 @@ export const FeedbackStatsScreen: React.FC<Props> = ({ navigation }) => {
           <Ionicons name="arrow-back" size={22} color={C.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Model Accuracy</Text>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => navigation.navigate('ReviewQueueScreen')}
-          accessibilityLabel="Review uncertain scans"
-        >
-          <Ionicons name="checkmark-done-circle-outline" size={22} color={C.red} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row' }}>
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => navigation.navigate('CollectionAnalyticsScreen')}
+            accessibilityLabel="Collection insights"
+          >
+            <Ionicons name="bar-chart-outline" size={22} color={C.red} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => navigation.navigate('ReviewQueueScreen')}
+            accessibilityLabel="Review uncertain scans"
+          >
+            <Ionicons name="checkmark-done-circle-outline" size={22} color={C.red} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView

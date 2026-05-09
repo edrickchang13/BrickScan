@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.database import engine, Base
-from app.api import auth, parts, sets, inventory, scan, bricklink
+from app.api import auth, parts, sets, inventory, scan, bricklink, inventory_insights
 from app.local_inventory import routes as local_inventory_routes
 from app.local_inventory import sets_routes
 from app.local_inventory.feedback_routes import feedback_router
@@ -75,6 +75,9 @@ app.include_router(bricklink.router)
 app.include_router(feedback_router)  # YOLO + active learning
 app.include_router(local_inventory_routes.router)
 app.include_router(sets_routes.router)
+# Inventory insights — buildable sets + theme/year/category analytics.
+# Already prefixed with /api/inventory inside the router.
+app.include_router(inventory_insights.router)
 
 
 @app.get("/health")
