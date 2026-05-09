@@ -152,6 +152,9 @@ ml/blender/hdris
 # int8 derivative (58 MB) is what actually ships.
 !backend/models/yolo_lego.int8.onnx
 !backend/models/yolo_lego.results.csv
+!backend/models/color_classifier.onnx
+!backend/models/color_classifier.onnx.data
+!backend/models/color_labels.json
 
 # Mobile bundles the int8 detector into the app via Expo's asset pipeline —
 # must be tracked so EAS/expo build picks it up. 58 MB, regenerable via

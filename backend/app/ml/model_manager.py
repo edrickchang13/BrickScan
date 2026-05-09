@@ -71,7 +71,12 @@ class ModelManager:
         self._encoder_session: Optional[Any] = None
         self._student_session: Optional[Any] = None
         self._yolo_session:    Optional[Any] = None
+        self._color_session:   Optional[Any] = None
         self._class_labels:    Optional[Dict[str, str]] = None
+        # color_id (str) → {"name": str, "hex": str, "is_trans": bool}
+        self._color_labels:    Optional[Dict[str, Dict[str, Any]]] = None
+        # ONNX-output-index → color_id (str), set when we load color_labels.json
+        self._color_idx_to_id: Optional[List[str]] = None
         self._loaded: bool = False
 
     @classmethod
@@ -121,6 +126,32 @@ class ModelManager:
         self._encoder_session = _try_load("contrastive_encoder.onnx")
         self._student_session = _try_load("distilled_student.onnx")
         self._yolo_session    = _try_load("yolo_lego.onnx")
+        self._color_session   = _try_load("color_classifier.onnx")
+
+        # Color labels — sidecar JSON mapping ONNX output index → color_id and
+        # color_id → {name, hex, is_trans}. We accept two formats:
+        #   format A: { "ordered_class_ids": ["0","1",...], "colors": {"0": {...}} }
+        #   format B: { "0": {"id": "0", "name": "Red", ...}, ... }  (legacy)
+        color_labels_path = MODELS_DIR / "color_labels.json"
+        if color_labels_path.exists():
+            try:
+                with open(color_labels_path) as f:
+                    raw_color: Dict = json.load(f)
+                if "ordered_class_ids" in raw_color and "colors" in raw_color:
+                    self._color_idx_to_id = [str(c) for c in raw_color["ordered_class_ids"]]
+                    self._color_labels = {
+                        str(k): v for k, v in raw_color["colors"].items()
+                    }
+                else:
+                    # Legacy: keys are color_ids, ordered numerically
+                    self._color_labels = {str(k): v for k, v in raw_color.items()}
+                    self._color_idx_to_id = sorted(
+                        self._color_labels.keys(),
+                        key=lambda k: int(k) if k.lstrip("-").isdigit() else 0,
+                    )
+                logger.info("Color labels: %d colors loaded", len(self._color_labels or {}))
+            except Exception as e:
+                logger.error("Failed to load color_labels.json: %s", e)
 
         labels_path = MODELS_DIR / "class_labels.json"
         if labels_path.exists():
@@ -150,6 +181,11 @@ class ModelManager:
     @property
     def yolo_available(self) -> bool:
         self._ensure_loaded(); return self._yolo_session is not None
+
+    @property
+    def color_available(self) -> bool:
+        self._ensure_loaded()
+        return self._color_session is not None and self._color_idx_to_id is not None
 
     # ── public methods ─────────────────────────────────────────────────────────
     def encode_image(self, image_bytes: bytes) -> Optional[np.ndarray]:
@@ -200,6 +236,54 @@ class ModelManager:
             return results
         except Exception as e:
             logger.error("classify_image: %s", e)
+            return []
+
+    def predict_color(self, image_bytes: bytes, top_k: int = 3) -> List[Dict[str, Any]]:
+        """
+        Color classifier → top-k LEGO colors for the input crop.
+
+        Returns a list of dicts (most-confident first):
+            {
+                "color_id": "4",          # Rebrickable colour id (str)
+                "color_name": "Red",
+                "color_hex": "#C91A09",
+                "is_trans": False,
+                "confidence": 0.93,        # softmax prob
+            }
+
+        Returns [] when the colour classifier isn't loaded (training pending).
+        Trained at img_size=160 — keep that here so we don't waste pixels on a
+        colour-only signal that doesn't need 224x224.
+        """
+        self._ensure_loaded()
+        if self._color_session is None or self._color_idx_to_id is None:
+            return []
+        try:
+            tensor = _preprocess(image_bytes, size=160)
+            in_name  = self._color_session.get_inputs()[0].name
+            out_name = self._color_session.get_outputs()[0].name
+            logits = self._color_session.run([out_name], {in_name: tensor})[0][0]
+            probs  = _softmax(logits)
+            k = min(top_k, len(self._color_idx_to_id))
+            top_idx = probs.argsort()[::-1][:k]
+            results: List[Dict[str, Any]] = []
+            for idx in top_idx:
+                color_id = self._color_idx_to_id[int(idx)]
+                meta = (self._color_labels or {}).get(color_id, {}) if self._color_labels else {}
+                hex_raw = meta.get("hex", "") or ""
+                color_hex = (
+                    f"#{hex_raw}" if hex_raw and not hex_raw.startswith("#") else hex_raw
+                )
+                results.append({
+                    "color_id":   color_id,
+                    "color_name": meta.get("name", f"color_{color_id}"),
+                    "color_hex":  color_hex,
+                    "is_trans":   bool(meta.get("is_trans", False)),
+                    "confidence": float(probs[int(idx)]),
+                })
+            return results
+        except Exception as e:
+            logger.error("predict_color: %s", e)
             return []
 
     def detect_pieces(self, image_bytes: bytes) -> List[BoundingBox]:

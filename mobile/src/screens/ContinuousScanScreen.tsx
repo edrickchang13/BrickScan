@@ -104,15 +104,22 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
 
   const addItem = useInventoryStore((s) => s.addItem);
 
+  // Phase 5 stage 3 — refine on-device bboxes through the backend cascade
+  const [refineWithBackend, setRefineWithBackend] = useState(false);
+  const refineRef = useRef(false);
+  refineRef.current = refineWithBackend;
+
   // ── Phase 5 — read flags + optionally preload the on-device detector ─────
   useEffect(() => {
     (async () => {
-      const [onDev, hp] = await Promise.all([
+      const [onDev, hp, refine] = await Promise.all([
         readBool(SETTINGS_KEYS.onDeviceDetect),
         readBool(SETTINGS_KEYS.highPerfMode),
+        readBool(SETTINGS_KEYS.refineOnDeviceWithBackend),
       ]);
       setOnDeviceMode(onDev);
       setHighPerfMode(hp);
+      setRefineWithBackend(refine);
       if (onDev) {
         const ok = await ensureDetectorLoaded();
         setOnDeviceReady(ok);
@@ -219,7 +226,11 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
       const useOnDevice = onDeviceReadyRef.current;
       if (useOnDevice) {
         try {
-          const r = await runOnDeviceScan(manipulated.uri);
+          const r = await runOnDeviceScan(manipulated.uri, {
+            refineWithBackend: refineRef.current,
+            refineConcurrency: 4,
+            refineMinConfidence: 0.30,
+          });
           pieces = r.pieces;
         } catch (e: any) {
           console.warn('[ContinuousScan] on-device failed; falling back:', e?.message ?? e);

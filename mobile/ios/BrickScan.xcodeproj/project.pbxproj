@@ -10,12 +10,14 @@
 		05145D9884B0021A39C9C93C /* DepthCaptureModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 6FFCF72A89DBD5E77454AB7A /* DepthCaptureModule.m */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
+		421E26277071FE6A74BCC012 /* PixelBridgeModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 888D2D530E6FD525AC385194 /* PixelBridgeModule.swift */; };
 		9393826D3DF8E59B79514830 /* DepthCaptureModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB97A0D03B5B3827EBA2D7A6 /* DepthCaptureModule.swift */; };
 		96905EF65AED1B983A6B3ABC /* libPods-BrickScan.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 58EEBF8E8E6FB1BC6CAF49B5 /* libPods-BrickScan.a */; };
 		B18059E884C0ABDD17F3DC3D /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC715A2D49A985799AEE119 /* ExpoModulesProvider.swift */; };
 		B512435B5DD810FF15E0A958 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 3F443B8F89D8B529CC6C2A9D /* PrivacyInfo.xcprivacy */; };
 		B5714D8DBC1B2A91354E676B /* MetroHostResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BD20617DF5F94E9A044867C /* MetroHostResolver.swift */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
+		BF5BE13EF1DE096E590021B1 /* PixelBridgeModule.m in Sources */ = {isa = PBXBuildFile; fileRef = ACB2FFA00D331E1A8509E091 /* PixelBridgeModule.m */; };
 		C4AA20A925CD2E32A0556E3D /* BrickClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D6370340E05EED5D9A36CC7 /* BrickClassifier.swift */; };
 		D64893A54DD4459D8358E2F8 /* noop-file.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86742196E8FD4DF7AD773CFF /* noop-file.swift */; };
 		DCFB97D9CBE06348F59AF434 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 557856F79269B1B51DB8FB5F /* AppDelegate.swift */; };
@@ -641,7 +643,9 @@
 		7A4D352CD337FB3A3BF06240 /* Pods-BrickScan.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-BrickScan.release.xcconfig"; path = "Target Support Files/Pods-BrickScan/Pods-BrickScan.release.xcconfig"; sourceTree = "<group>"; };
 		80A575A1F1624623807A3B3F /* BrickScan-Bridging-Header.h */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.c.h; name = "BrickScan-Bridging-Header.h"; path = "BrickScan/BrickScan-Bridging-Header.h"; sourceTree = "<group>"; };
 		86742196E8FD4DF7AD773CFF /* noop-file.swift */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = sourcecode.swift; name = "noop-file.swift"; path = "BrickScan/noop-file.swift"; sourceTree = "<group>"; };
+		888D2D530E6FD525AC385194 /* PixelBridgeModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PixelBridgeModule.swift; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = BrickScan/SplashScreen.storyboard; sourceTree = "<group>"; };
+		ACB2FFA00D331E1A8509E091 /* PixelBridgeModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = PixelBridgeModule.m; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
 		DB97A0D03B5B3827EBA2D7A6 /* DepthCaptureModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DepthCaptureModule.swift; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
@@ -714,6 +718,7 @@
 				D7E4C46ADA2E9064B798F356 /* ExpoModulesProviders */,
 				48EC8EE0B9C566C2944B8077 /* Pods.xcodeproj */,
 				51DB628A7DC4085293DB201C /* DepthCapture */,
+				A40489088BC2B15458FC5869 /* PixelBridge */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -821,6 +826,16 @@
 			name = BrickScan;
 			sourceTree = "<group>";
 		};
+		A40489088BC2B15458FC5869 /* PixelBridge */ = {
+			isa = PBXGroup;
+			children = (
+				888D2D530E6FD525AC385194 /* PixelBridgeModule.swift */,
+				ACB2FFA00D331E1A8509E091 /* PixelBridgeModule.m */,
+			);
+			name = PixelBridge;
+			path = PixelBridge;
+			sourceTree = "<group>";
+		};
 		BB2F792B24A3F905000567C9 /* Supporting */ = {
 			isa = PBXGroup;
 			children = (
@@ -861,7 +876,6 @@
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */,
-				322DD1C84D7B2152AA81AF55 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -1560,24 +1574,6 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
-		322DD1C84D7B2152AA81AF55 /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-BrickScan/Pods-BrickScan-frameworks.sh",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/hermes-engine/Pre-built/hermesvm.framework/hermesvm",
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputPaths = (
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermesvm.framework",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-BrickScan/Pods-BrickScan-frameworks.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
 		62985FDBB02B5A6123258130 /* [Expo] Configure project */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -1662,6 +1658,8 @@
 				B5714D8DBC1B2A91354E676B /* MetroHostResolver.swift in Sources */,
 				9393826D3DF8E59B79514830 /* DepthCaptureModule.swift in Sources */,
 				05145D9884B0021A39C9C93C /* DepthCaptureModule.m in Sources */,
+				421E26277071FE6A74BCC012 /* PixelBridgeModule.swift in Sources */,
+				BF5BE13EF1DE096E590021B1 /* PixelBridgeModule.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

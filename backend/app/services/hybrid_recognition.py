@@ -330,6 +330,32 @@ async def hybrid_predict(
         if scan_rgb is not None:
             merged = rerank_predictions_by_color(merged, scan_rgb)
 
+    # B4 — ML colour fill: when the colour classifier is loaded, run it once
+    # over the scan image and authoritatively fill any prediction missing a
+    # colour_id / colour_name. We always overwrite Brickognize / Gemini's
+    # colour fields when they disagree with our top-1 ML colour at >75%
+    # confidence — empirically more reliable than upstream sources, which
+    # often guess from a list of common colours rather than the actual photo.
+    if merged:
+        try:
+            from app.ml.model_manager import ModelManager
+            mm = ModelManager.get()
+            if mm.color_available:
+                color_top = mm.predict_color(image_bytes, top_k=1)
+                if color_top:
+                    primary = color_top[0]
+                    high_conf = float(primary.get("confidence", 0)) >= 0.75
+                    for p in merged:
+                        # Always populate when missing
+                        missing = not p.get("color_id") or not p.get("color_name")
+                        if missing or high_conf:
+                            p["color_id"]    = primary["color_id"]
+                            p["color_name"]  = primary["color_name"]
+                            p["color_hex"]   = primary["color_hex"]
+                            p["color_confidence"] = primary["confidence"]
+        except Exception as e:
+            logger.debug("ML colour fill skipped (non-fatal): %s", e)
+
     # Temperature calibration — applied LAST so per-source temperatures act
     # on the final, merged confidences. This is post-hoc scaling only; it
     # cannot make a wrong prediction right, but it can prevent Gemini's
@@ -415,6 +441,34 @@ async def _safe_local_predict(image_bytes: bytes) -> List[Dict]:
                             "k-NN match: %s (dist=%.3f, conf=%.0f%%)",
                             knn_top["part_num"], top_dist, knn_top["confidence"] * 100,
                         )
+
+        # ── Step 1b: Visual-search retrieval over element-level catalogue ────
+        # Adds richer (part + colour) hits when the DINOv2 catalogue is built.
+        # Falls through silently when catalog_embeddings.pkl isn't deployed yet.
+        if mm.encoder_available:
+            try:
+                from app.services import visual_search
+                if visual_search.is_loaded():
+                    embedding = mm.encode_image(image_bytes)
+                    hits = visual_search.search(embedding, top_k=5, min_similarity=0.55)
+                    for h in hits:
+                        results.append({
+                            "part_num":   h.part_num,
+                            "part_name":  h.part_name,
+                            "confidence": h.similarity,  # cosine [-1,1] but pre-filtered
+                            "color_id":   h.color_id,
+                            "color_name": h.color_name,
+                            "color_hex":  h.color_hex,
+                            "source":     "visual_search",
+                            "element_id": h.element_id,
+                        })
+                    if hits:
+                        logger.info(
+                            "visual_search: top hit %s (sim=%.3f, %d total)",
+                            hits[0].part_num, hits[0].similarity, len(hits),
+                        )
+            except Exception as e:
+                logger.debug("visual_search tier skipped: %s", e)
 
         # ── Step 2: Distilled student (if k-NN uncertain or unavailable) ─────
         if knn_top is None and mm.student_available:

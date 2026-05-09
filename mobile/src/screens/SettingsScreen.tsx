@@ -19,6 +19,7 @@ const SCAN_MODE_KEY = SETTINGS_KEYS.scanMode;
 const LOCAL_ONLY_KEY = SETTINGS_KEYS.localOnly;
 const ON_DEVICE_KEY = SETTINGS_KEYS.onDeviceDetect;
 const HIGH_PERF_KEY = SETTINGS_KEYS.highPerfMode;
+const REFINE_KEY = SETTINGS_KEYS.refineOnDeviceWithBackend;
 
 type ScanMode = 'photo' | 'video' | 'multi';
 
@@ -33,6 +34,7 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
   const [localOnly, setLocalOnly] = useState(false);
   const [onDeviceDetect, setOnDeviceDetect] = useState(false);
   const [highPerfMode, setHighPerfMode] = useState(false);
+  const [refineOnDevice, setRefineOnDevice] = useState(false);
   const [isClearingHistory, setIsClearingHistory] = useState(false);
   const [isClearingCache, setIsClearingCache] = useState(false);
   const [apiUrl] = useState(() => apiClient.getBaseUrl());
@@ -45,13 +47,15 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
       AsyncStorage.getItem(LOCAL_ONLY_KEY),
       AsyncStorage.getItem(ON_DEVICE_KEY),
       AsyncStorage.getItem(HIGH_PERF_KEY),
-    ]).then(([mode, local, onDev, hp]) => {
+      AsyncStorage.getItem(REFINE_KEY),
+    ]).then(([mode, local, onDev, hp, refine]) => {
       if (mode === 'photo' || mode === 'video' || mode === 'multi') {
         setDefaultScanMode(mode);
       }
       setLocalOnly(local === 'true');
       setOnDeviceDetect(onDev === 'true');
       setHighPerfMode(hp === 'true');
+      setRefineOnDevice(refine === 'true');
     });
 
     // Check API status
@@ -76,6 +80,11 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
   const handleToggleHighPerf = async (value: boolean) => {
     setHighPerfMode(value);
     await AsyncStorage.setItem(HIGH_PERF_KEY, value ? 'true' : 'false');
+  };
+
+  const handleToggleRefineOnDevice = async (value: boolean) => {
+    setRefineOnDevice(value);
+    await AsyncStorage.setItem(REFINE_KEY, value ? 'true' : 'false');
   };
 
   const handleClearHistory = () => {
@@ -250,6 +259,26 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
             onValueChange={handleToggleHighPerf}
             trackColor={{ false: C.border, true: C.red + '80' }}
             thumbColor={highPerfMode ? C.red : C.textMuted}
+          />
+        </View>
+
+        <View style={styles.settingRow}>
+          <View style={[styles.settingIcon, { backgroundColor: '#E0F2FE' }]}>
+            <Ionicons name="cloud-upload-outline" size={20} color="#0284C7" />
+          </View>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingTitle}>Refine On-Device with Cloud</Text>
+            <Text style={styles.settingDesc}>
+              Send each detected brick to Brickognize for higher accuracy
+              (requires on-device detection; adds ~300ms per frame)
+            </Text>
+          </View>
+          <Switch
+            value={refineOnDevice}
+            onValueChange={handleToggleRefineOnDevice}
+            disabled={!onDeviceDetect}
+            trackColor={{ false: C.border, true: C.red + '80' }}
+            thumbColor={refineOnDevice ? C.red : C.textMuted}
           />
         </View>
       </View>

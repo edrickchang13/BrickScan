@@ -702,6 +702,81 @@ class ApiClient {
       return response.data;
     });
   }
+
+  // ------------------------------------------------------------------
+  // Inventory insights — buildable sets + theme/year/category analytics.
+  // ------------------------------------------------------------------
+  async getBuildableSets(args?: {
+    colorMatch?: 'exact' | 'loose';
+    minCompletion?: number;
+    limit?: number;
+    themeId?: number;
+  }): Promise<BuildableSetsResponse> {
+    return withRetry(async () => {
+      const response = await this.client.get('/api/inventory/buildable-sets', {
+        params: {
+          color_match: args?.colorMatch ?? 'loose',
+          min_completion: args?.minCompletion ?? 0.5,
+          limit: args?.limit ?? 50,
+          theme_id: args?.themeId,
+        },
+      });
+      return response.data;
+    });
+  }
+
+  async getInventoryAnalytics(): Promise<InventoryAnalyticsResponse> {
+    return withRetry(async () => {
+      const response = await this.client.get('/api/inventory/analytics');
+      return response.data;
+    });
+  }
+}
+
+// ─── Inventory-insights schemas ────────────────────────────────────────────
+export interface BuildableSet {
+  set_num: string;
+  name: string;
+  year: number | null;
+  theme_id: number | null;
+  num_parts: number;
+  img_url: string | null;
+  distinct_completion: number;
+  quantity_completion: number;
+  matched_pairs: number;
+  total_pairs: number;
+  missing: { part_num: string; color_id: number | null; quantity_short: number }[];
+}
+export interface BuildableSetsResponse {
+  catalog_loaded: boolean;
+  color_match: string;
+  sets: BuildableSet[];
+}
+
+export interface CategoryAgg {
+  cat_id: number;
+  cat_name: string;
+  total_quantity: number;
+  distinct_parts: number;
+}
+export interface ThemeAgg {
+  theme_id: number;
+  theme_name: string;
+  total_quantity: number;
+  distinct_parts: number;
+}
+export interface DecadeAgg {
+  decade: number;
+  total_quantity: number;
+  distinct_parts: number;
+}
+export interface InventoryAnalyticsResponse {
+  catalog_loaded: boolean;
+  total_quantity: number;
+  distinct_parts: number;
+  by_part_category: CategoryAgg[];
+  by_theme: ThemeAgg[];
+  by_year_decade: DecadeAgg[];
 }
 
 export const apiClient = new ApiClient();
