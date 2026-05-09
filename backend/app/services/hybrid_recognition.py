@@ -442,6 +442,34 @@ async def _safe_local_predict(image_bytes: bytes) -> List[Dict]:
                             knn_top["part_num"], top_dist, knn_top["confidence"] * 100,
                         )
 
+        # ── Step 1b: Visual-search retrieval over element-level catalogue ────
+        # Adds richer (part + colour) hits when the DINOv2 catalogue is built.
+        # Falls through silently when catalog_embeddings.pkl isn't deployed yet.
+        if mm.encoder_available:
+            try:
+                from app.services import visual_search
+                if visual_search.is_loaded():
+                    embedding = mm.encode_image(image_bytes)
+                    hits = visual_search.search(embedding, top_k=5, min_similarity=0.55)
+                    for h in hits:
+                        results.append({
+                            "part_num":   h.part_num,
+                            "part_name":  h.part_name,
+                            "confidence": h.similarity,  # cosine [-1,1] but pre-filtered
+                            "color_id":   h.color_id,
+                            "color_name": h.color_name,
+                            "color_hex":  h.color_hex,
+                            "source":     "visual_search",
+                            "element_id": h.element_id,
+                        })
+                    if hits:
+                        logger.info(
+                            "visual_search: top hit %s (sim=%.3f, %d total)",
+                            hits[0].part_num, hits[0].similarity, len(hits),
+                        )
+            except Exception as e:
+                logger.debug("visual_search tier skipped: %s", e)
+
         # ── Step 2: Distilled student (if k-NN uncertain or unavailable) ─────
         if knn_top is None and mm.student_available:
             student_preds = mm.classify_image(image_bytes, top_k=5)

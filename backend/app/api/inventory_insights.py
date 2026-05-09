@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.local_inventory.database import get_local_db
 from app.local_inventory.models import LocalInventoryPart
-from app.services import set_completion, inventory_analytics
+from app.services import set_completion, inventory_analytics, visual_search
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +153,17 @@ def get_buildable_sets(
         color_match=color_match,
         sets=sets,
     )
+
+
+@router.get("/visual-search-status")
+def visual_search_status():
+    """Health/diagnostics for the DINOv2 visual-search catalogue.
+    Returns whether the catalogue pickle is loaded and how many entries
+    it contains. Used by the mobile diagnostic panel + CI smoke tests."""
+    return {
+        "loaded": visual_search.is_loaded(),
+        "catalog_size": visual_search.catalog_size(),
+    }
 
 
 @router.get("/analytics", response_model=AnalyticsResponse)
