@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.local_inventory.database import get_local_db
 from app.local_inventory.models import LocalInventoryPart
-from app.services import set_completion, inventory_analytics, visual_search
+from app.services import set_completion, inventory_analytics, visual_search, pricing
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +153,54 @@ def get_buildable_sets(
         color_match=color_match,
         sets=sets,
     )
+
+
+@router.get("/price/{part_num}/{color_id}")
+async def get_price(part_num: str, color_id: int):
+    """Lookup median market price (USD) for a single (part, colour) pair.
+    Returns 404 when no source has data for the pair."""
+    quote = await pricing.get_price_usd(part_num, color_id)
+    if quote is None:
+        return {"part_num": part_num, "color_id": color_id, "price": None}
+    return {"part_num": part_num, "color_id": color_id, "price": quote.to_dict()}
+
+
+@router.get("/valuation")
+async def get_valuation(db: Session = Depends(get_local_db)):
+    """Sum of (price × quantity) across the user's local inventory.
+    Returns the total + per-row breakdown. Uses the in-memory price cache so
+    repeat calls within 24h don't re-hit Rebrickable."""
+    rows = db.query(LocalInventoryPart).all()
+    pairs = [(r.part_num, int(r.color_id))
+             for r in rows
+             if r.part_num and r.color_id is not None]
+    quotes = await pricing.get_prices_bulk(pairs)
+    breakdown = []
+    total = 0.0
+    priced_count = 0
+    for r in rows:
+        if r.color_id is None: continue
+        q = quotes.get((r.part_num, int(r.color_id)))
+        unit = q.median_usd if q else None
+        line = (unit * r.quantity) if unit is not None else None
+        if line is not None:
+            total += line
+            priced_count += 1
+        breakdown.append({
+            "part_num": r.part_num,
+            "color_id": r.color_id,
+            "quantity": r.quantity,
+            "unit_price_usd": unit,
+            "line_value_usd": line,
+        })
+    return {
+        "total_usd": round(total, 2),
+        "priced_lines": priced_count,
+        "total_lines": len(breakdown),
+        "currency": "USD",
+        "breakdown": breakdown,
+        "cache": pricing.cache_stats(),
+    }
 
 
 @router.get("/visual-search-status")

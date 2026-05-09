@@ -146,6 +146,25 @@ def _load_catalog(path: Path = DEFAULT_CATALOG_PATH) -> None:
         )
 
 
+class _NumpyBruteForceIndex:
+    """Pure-numpy brute-force inner-product search.
+
+    Used as the bottom-of-the-barrel fallback when neither FAISS nor sklearn
+    is installed. Plenty fast at <50K rows × ~384d on CPU (~5-15ms / query).
+    Catalogue rows MUST be L2-normalised already (visual_search guarantees that
+    in _load_catalog so cosine == dot product).
+    """
+    def __init__(self, embeddings: np.ndarray):
+        self._emb = embeddings  # (N, D), L2-normalised
+
+    def search(self, query: np.ndarray, k: int):
+        # query is (1, D); compute (1, N) similarity, then top-k
+        sims = query @ self._emb.T          # inner product == cosine here
+        idx = np.argsort(-sims, axis=1)[:, :k]
+        ordered = np.take_along_axis(sims, idx, axis=1)
+        return ordered, idx
+
+
 def _build_index(emb: np.ndarray):
     """Pick the right ANN backend for the catalogue size."""
     n = emb.shape[0]
@@ -167,13 +186,17 @@ def _build_index(emb: np.ndarray):
                 index.add(np.ascontiguousarray(emb))
             return index
         except ImportError:
-            logger.info("visual_search: faiss not installed; falling back to sklearn")
-    # Fallback: sklearn NearestNeighbors with cosine metric. Works fine
-    # at <50K catalogue scale.
-    from sklearn.neighbors import NearestNeighbors
-    nn = NearestNeighbors(metric="cosine", algorithm="brute")
-    nn.fit(emb)
-    return nn
+            logger.info("visual_search: faiss not installed; trying sklearn")
+    # Try sklearn NearestNeighbors with cosine metric.
+    try:
+        from sklearn.neighbors import NearestNeighbors  # type: ignore
+        nn = NearestNeighbors(metric="cosine", algorithm="brute")
+        nn.fit(emb)
+        return nn
+    except ImportError:
+        logger.info("visual_search: sklearn not installed; using numpy brute force")
+    # Final fallback: pure numpy. Always works because numpy is mandatory.
+    return _NumpyBruteForceIndex(emb)
 
 
 def _query(emb_query: np.ndarray, top_k: int) -> Tuple[np.ndarray, np.ndarray]:
@@ -190,7 +213,9 @@ def _query(emb_query: np.ndarray, top_k: int) -> Tuple[np.ndarray, np.ndarray]:
         q = q / norm
 
     if hasattr(_INDEX, "search"):
-        # FAISS path — IP search on already-normalised vectors gives cosine
+        # FAISS or _NumpyBruteForceIndex — both return (similarity, index)
+        # with the same (1, k) shape. IP search on already-normalised vectors
+        # gives cosine.
         sims, idx = _INDEX.search(q, k)
         return sims[0], idx[0]
     # sklearn path — returns cosine *distance*, convert to similarity
@@ -279,13 +304,16 @@ def search(
     return out
 
 
-def reload_from_disk() -> None:
+def reload_from_disk(path: Optional[Path] = None) -> None:
     """Force a re-read of the catalogue. Call after dropping in a freshly
-    built pickle without restarting the server."""
+    built pickle without restarting the server.
+
+    Pass `path` to override the default location (mostly useful in tests).
+    """
     global _LOADED, _ENTRIES, _EMBEDDINGS, _INDEX
     with _LOCK:
         _LOADED = False
         _ENTRIES = []
         _EMBEDDINGS = None
         _INDEX = None
-    _load_catalog()
+    _load_catalog(path or DEFAULT_CATALOG_PATH)

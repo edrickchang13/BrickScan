@@ -17,11 +17,13 @@
  */
 import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as ImageManipulator from 'expo-image-manipulator';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const jpeg: { decode: (data: Uint8Array, opts?: { useTArray?: boolean }) => { data: Uint8Array; width: number; height: number } } = require('jpeg-js');
 
 import { YoloDetector, rawDetectionToStubPiece } from './yoloDetector';
-import type { DetectedPiece } from '@/types';
+import { apiClient } from '@/services/api';
+import type { DetectedPiece, ScanPrediction } from '@/types';
 
 // Class labels baked in — must match the model's labels.json. Kept in sync
 // manually; a future "self-describing ONNX" (metadata-props) could load these
@@ -87,14 +89,44 @@ export interface OnDeviceScanResult {
   inferenceMs: number;
   postprocessMs: number;
   decodeMs: number;
+  /** Wall-clock spent on backend bbox refinement when `refineWithBackend=true`. 0 otherwise. */
+  refineMs: number;
+  /** How many of the on-device bboxes were upgraded with backend predictions. */
+  refinedCount: number;
   totalMs: number;
+}
+
+export interface OnDeviceScanOptions {
+  /**
+   * When true, each detected bbox is cropped from the original JPEG and POSTed
+   * to the backend `/api/scan` cascade (Brickognize → Gemini → local). The
+   * higher-accuracy backend prediction replaces the on-device 28-class YOLO
+   * label as `primaryPrediction`. Adds ~300-500ms to the frame on USB; opt-in
+   * because it negates the offline benefit of on-device detection.
+   *
+   * Phase 5 doc Stage 3 outstanding item #2.
+   */
+  refineWithBackend?: boolean;
+  /**
+   * Cap on parallel backend requests when refining. Defaults to 4 — enough to
+   * pipeline most scenes without flooding the device's network stack.
+   */
+  refineConcurrency?: number;
+  /**
+   * Drop bboxes whose on-device confidence is below this before refining.
+   * Avoids spending backend budget on near-noise detections.
+   */
+  refineMinConfidence?: number;
 }
 
 /**
  * Run one on-device detection pass on a JPEG stored at `jpegUri`.
  * Returns a DetectedPiece[] shape that the Phase 2 tracker consumes verbatim.
  */
-export async function runOnDeviceScan(jpegUri: string): Promise<OnDeviceScanResult> {
+export async function runOnDeviceScan(
+  jpegUri: string,
+  opts: OnDeviceScanOptions = {},
+): Promise<OnDeviceScanResult> {
   if (!detector?.isReady()) {
     throw new Error('On-device detector not loaded; call ensureDetectorLoaded() first');
   }
@@ -117,7 +149,7 @@ export async function runOnDeviceScan(jpegUri: string): Promise<OnDeviceScanResu
   );
 
   // 3. Build DetectedPiece[] (on-device label → primaryPrediction stub)
-  const pieces: DetectedPiece[] = detections.map((d, i) => {
+  let pieces: DetectedPiece[] = detections.map((d, i) => {
     const stub = rawDetectionToStubPiece(d, i);
     return {
       pieceIndex: stub.pieceIndex,
@@ -127,14 +159,114 @@ export async function runOnDeviceScan(jpegUri: string): Promise<OnDeviceScanResu
     };
   });
 
+  // 4. Optional Phase 5 Stage 3 fix — refine each bbox with the backend
+  //    classifier. Each crop is sent through /api/scan; the backend's top
+  //    prediction (Brickognize → Gemini → local cascade) replaces the
+  //    on-device 28-class YOLO label.
+  let refineMs = 0;
+  let refinedCount = 0;
+  if (opts.refineWithBackend && pieces.length > 0) {
+    const tRef = Date.now();
+    const minConf = opts.refineMinConfidence ?? 0.30;
+    const concurrency = opts.refineConcurrency ?? 4;
+    pieces = await refinePiecesWithBackend(
+      pieces, jpegUri, decoded.width, decoded.height,
+      { minConfidence: minConf, concurrency },
+    );
+    refineMs = Date.now() - tRef;
+    refinedCount = pieces.filter(p => p.primaryPrediction.source === 'backend_refined').length;
+  }
+
   return {
     pieces,
     preprocessMs: metrics.preprocessMs,
     inferenceMs: metrics.inferenceMs,
     postprocessMs: metrics.postprocessMs,
     decodeMs,
+    refineMs,
+    refinedCount,
     totalMs: Date.now() - tTotal,
   };
+}
+
+interface RefineOpts { minConfidence: number; concurrency: number; }
+
+/**
+ * Crop each piece's bbox out of the source JPEG and POST it to /api/scan.
+ * Replaces `primaryPrediction` with the backend's top result, marking the
+ * source as `backend_refined` so the UI can distinguish refined vs raw bboxes.
+ *
+ * Refinement is best-effort — any single bbox that fails to crop, encode, or
+ * post falls back to the on-device stub silently. The whole pipeline never
+ * fails because of one bad crop.
+ */
+async function refinePiecesWithBackend(
+  pieces: DetectedPiece[],
+  jpegUri: string,
+  imgWidth: number,
+  imgHeight: number,
+  opts: RefineOpts,
+): Promise<DetectedPiece[]> {
+  const refineTask = async (piece: DetectedPiece): Promise<DetectedPiece> => {
+    const stubConf = piece.primaryPrediction?.confidence ?? 0;
+    if (stubConf < opts.minConfidence || !piece.bbox || piece.bbox.length !== 4) {
+      return piece;
+    }
+    try {
+      const [nx1, ny1, nx2, ny2] = piece.bbox;
+      const x = Math.max(0, Math.round(nx1 * imgWidth));
+      const y = Math.max(0, Math.round(ny1 * imgHeight));
+      const w = Math.max(1, Math.round((nx2 - nx1) * imgWidth));
+      const h = Math.max(1, Math.round((ny2 - ny1) * imgHeight));
+      // Skip degenerate crops (slivers don't classify well anyway)
+      if (w < 24 || h < 24) return piece;
+
+      const cropped = await ImageManipulator.manipulateAsync(
+        jpegUri,
+        [{ crop: { originX: x, originY: y, width: w, height: h } }],
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true },
+      );
+      const b64 = cropped.base64;
+      if (!b64) return piece;
+
+      // Backend cascade: Brickognize → Gemini → local. Returns ScanResult.
+      const result = await apiClient.scanImage(b64);
+      const top = result?.predictions?.[0];
+      if (!top) return piece;
+
+      const refined: ScanPrediction = {
+        partNum: top.partNum,
+        partName: top.partName,
+        colorId: String(top.colorId ?? piece.primaryPrediction?.colorId ?? ''),
+        colorName: top.colorName ?? piece.primaryPrediction?.colorName ?? '',
+        colorHex: top.colorHex ?? piece.primaryPrediction?.colorHex ?? '',
+        confidence: top.confidence ?? stubConf,
+        imageUrl: top.imageUrl,
+        source: 'backend_refined',
+      };
+      return {
+        ...piece,
+        predictions: [refined, ...piece.predictions.slice(0, 4)],
+        primaryPrediction: refined,
+      };
+    } catch {
+      // Silent fall-back — the on-device stub is still in `piece` unchanged
+      return piece;
+    }
+  };
+
+  // Bounded-parallelism worker pool — keeps the device's network stack happy
+  const out: DetectedPiece[] = new Array(pieces.length);
+  let cursor = 0;
+  const worker = async () => {
+    while (true) {
+      const i = cursor++;
+      if (i >= pieces.length) return;
+      out[i] = await refineTask(pieces[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: opts.concurrency }, () => worker()));
+  return out;
 }
 
 function base64ToUint8Array(b64: string): Uint8Array {
