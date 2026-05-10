@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { apiClient, ScanProgressEvent } from '@/services/api';
 import { ScanProgress, friendlyStageLabel } from '@/components/ScanProgress';
 import * as ImageManipulator from 'expo-image-manipulator';
+import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { isDepthAvailable, captureRGBD } from '@/services/depthCapture';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -217,6 +218,107 @@ export const ScanScreen: React.FC<Props> = ({ navigation }) => {
       return null;
     }
   }, []);
+
+  /**
+   * Pick an existing photo from the user's camera roll and run it through the
+   * same /api/scan pipeline used for live captures. Mirrors handlePhotoCapture
+   * verbatim from the resize+base64 step on so feature flags (calibration,
+   * grounded Gemini, mold collapse, etc.) all apply identically — i.e. the
+   * scan accuracy is identical whether the photo came from the live camera or
+   * the user's library.
+   */
+  const handleUploadFromGallery = async () => {
+    if (isLoading || isRecording) return;
+
+    // Permission gate. expo-image-picker shows the system prompt the first
+    // time; subsequent calls return the cached status.
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert(
+        'Photo library access required',
+        'BrickScan needs permission to read your photo library so you can pick a brick photo.',
+      );
+      return;
+    }
+
+    let asset;
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,        // editing strips EXIF + can hide details
+        quality: 0.95,                // server-side resize follows; keep source quality high
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      asset = result.assets[0];
+    } catch (e: any) {
+      Alert.alert('Picker error', e?.message ?? 'Could not open photo library.');
+      return;
+    }
+
+    setIsLoading(true);
+    setLoadingStatus('Loading photo…');
+    setScanPercent(0);
+    setScanStageLabel('Loading photo…');
+    setScanPartial(undefined);
+
+    try {
+      const manipulated = await ImageManipulator.manipulateAsync(
+        asset.uri,
+        [{ resize: { width: 512, height: 512 } }],
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG },
+      );
+      const base64 = await FileSystem.readAsStringAsync(manipulated.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      setLoadingStatus('Identifying piece…');
+      setScanStageLabel('Sending to backend…');
+      setScanPercent(5);
+
+      const onProgress = (event: ScanProgressEvent) => {
+        if (event.percent >= 0) setScanPercent(event.percent);
+        setScanStageLabel(friendlyStageLabel(event.stage, event.message));
+        setLoadingStatus(friendlyStageLabel(event.stage, event.message));
+        const top = event.partial?.predictions?.[0];
+        if (top) {
+          setScanPartial({
+            partNum: top.part_num,
+            partName: top.part_name,
+            confidence: top.confidence,
+            source: top.source,
+          });
+        }
+      };
+      const result = await apiClient.scanWithProgress(base64, onProgress);
+
+      if (result.predictions?.length > 0) {
+        const topPrediction = result.predictions[0];
+        const resultData = {
+          predictions: result.predictions,
+          scanMode: 'photo' as const,
+        };
+        if (topPrediction.partNum && topPrediction.colorId) {
+          await checkForDuplicates(topPrediction.partNum, topPrediction.colorId, resultData);
+        } else {
+          await updateSessionCount();
+          navigation.navigate('ScanResultScreen', resultData);
+        }
+      } else {
+        Alert.alert(
+          'No bricks detected',
+          'Try a clearer photo — better lighting and a single brick centered in frame works best.',
+        );
+      }
+    } catch (e: any) {
+      Alert.alert('Scan failed', e?.message ?? 'Unknown error processing the uploaded photo.');
+    } finally {
+      setIsLoading(false);
+      setLoadingStatus('');
+      setScanPercent(0);
+      setScanStageLabel('');
+      setScanPartial(undefined);
+    }
+  };
 
   const handlePhotoCapture = async () => {
     if (!cameraRef.current || !isCameraReady) {
@@ -954,29 +1056,51 @@ export const ScanScreen: React.FC<Props> = ({ navigation }) => {
           <Text style={styles.hintText}>{config.hint}</Text>
         </View>
 
-        <TouchableOpacity
-          style={[
-            styles.captureBtn,
-            (isLoading || !isCameraReady) && styles.captureBtnDisabled,
-            isRecording && styles.captureBtnRecording,
-          ]}
-          onPress={handleCapture}
-          disabled={isLoading || !isCameraReady}
-          activeOpacity={0.8}
-        >
-          <View style={[
-            styles.captureInner,
-            isRecording && styles.captureInnerRecording,
-          ]}>
-            {isLoading ? (
-              <Ionicons name="hourglass-outline" size={28} color={C.red} />
-            ) : isRecording ? (
-              <Ionicons name="stop" size={28} color={C.white} />
-            ) : (
-              <Ionicons name={config.icon} size={28} color={C.red} />
-            )}
-          </View>
-        </TouchableOpacity>
+        <View style={styles.captureRow}>
+          {/* Gallery / upload-from-camera-roll button.
+              Mirrors the shutter UX so users can scan an existing photo
+              (e.g. shared from a friend, screenshotted from a guide, etc).
+              Disabled while a scan is in flight or while recording. */}
+          <TouchableOpacity
+            style={[
+              styles.galleryBtn,
+              (isLoading || isRecording) && styles.captureBtnDisabled,
+            ]}
+            onPress={handleUploadFromGallery}
+            disabled={isLoading || isRecording}
+            activeOpacity={0.7}
+            accessibilityLabel="Upload photo from camera roll"
+          >
+            <Ionicons name="images-outline" size={22} color={C.white} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.captureBtn,
+              (isLoading || !isCameraReady) && styles.captureBtnDisabled,
+              isRecording && styles.captureBtnRecording,
+            ]}
+            onPress={handleCapture}
+            disabled={isLoading || !isCameraReady}
+            activeOpacity={0.8}
+          >
+            <View style={[
+              styles.captureInner,
+              isRecording && styles.captureInnerRecording,
+            ]}>
+              {isLoading ? (
+                <Ionicons name="hourglass-outline" size={28} color={C.red} />
+              ) : isRecording ? (
+                <Ionicons name="stop" size={28} color={C.white} />
+              ) : (
+                <Ionicons name={config.icon} size={28} color={C.red} />
+              )}
+            </View>
+          </TouchableOpacity>
+
+          {/* Spacer to keep the shutter centered with the gallery button on the left */}
+          <View style={styles.galleryBtnSpacer} />
+        </View>
 
         <Text style={styles.scanLabel}>
           {isLoading
@@ -1358,6 +1482,24 @@ const styles = StyleSheet.create({
     borderRadius: R.full,
   },
   hintText: { color: 'rgba(255,255,255,0.65)', fontSize: 12, fontWeight: '500' },
+  captureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  galleryBtn: {
+    width: 44, height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: 24,
+  },
+  // Invisible spacer that mirrors the gallery button width so the shutter
+  // stays visually centred in the row (gallery on left, spacer on right).
+  galleryBtnSpacer: {
+    width: 44, height: 44,
+    marginLeft: 24,
+  },
   captureBtn: {
     width: 80, height: 80,
     borderRadius: 40,

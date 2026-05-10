@@ -1,0 +1,22 @@
+{
+  "Brick_1x1": "3005",
+  "Brick_1x2": "3004",
+  "Brick_1x3": "3622",
+  "Brick_1x4": "3010",
+  "Brick_2x2": "3003",
+  "Brick_2x2_L": "2357",
+  "Brick_2x2_Slope": "3039",
+  "Brick_2x3": "3002",
+  "Brick_2x4": "3001",
+  "Plate_1x1": "3024",
+  "Plate_1x1_Round": "6141",
+  "Plate_1x1_Slope": "54200",
+  "Plate_1x2": "3023",
+  "Plate_1x2_Grill": "2412",
+  "Plate_1x3": "3623",
+  "Plate_1x4": "3710",
+  "Plate_2x2": "3022",
+  "Plate_2x2_L": "2420",
+  "Plate_2x3": "3021",
+  "Plate_2x4": "3020"
+}
