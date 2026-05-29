@@ -1,0 +1,117 @@
+# Production-style compose for a single host / VPS deploy.
+#
+# vs docker-compose.yml (dev):
+#   - backend built from backend/Dockerfile.prod (gunicorn, non-root, no --reload)
+#   - NO source bind-mounts (code is baked into the image)
+#   - NO adminer (don't expose a DB admin UI in prod)
+#   - secrets come from backend/.env (env_file) — NOT hardcoded here
+#   - DB/Redis are NOT published to the host (only the backend reaches them
+#     over the internal network); put the backend behind a TLS reverse proxy
+#   - model artifacts mounted READ-ONLY from ./artifacts (see DEPLOY.md)
+#
+# Usage:
+#   1. cp backend/.env.example backend/.env   # then fill in real secrets
+#   2. ./scripts/provision_artifacts.sh        # populates ./artifacts
+#   3. docker compose -f docker-compose.prod.yml up -d --build
+#   4. docker compose -f docker-compose.prod.yml exec backend alembic upgrade head
+#
+# NOTE: this gives you app + datastores on one box. TLS termination, a managed
+# Postgres, backups, and multi-replica scaling are intentionally left to the
+# host platform — see backend/DEPLOY.md for the per-platform guidance and the
+# punch list of what must change before real multi-user production.
+
+services:
+  db:
+    image: postgres:16
+    container_name: brickscan_db_prod
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-brickscan}
+      POSTGRES_USER: ${POSTGRES_USER:-brickscan_user}
+      # REQUIRED in prod — no default. Set POSTGRES_PASSWORD in the shell/env
+      # that runs compose (or an .env next to this file). Compose fails loudly
+      # if it's unset, which is what we want.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - brickscan_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-brickscan_user} -d ${POSTGRES_DB:-brickscan}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - brickscan_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: brickscan_redis_prod
+    command: redis-server --appendonly yes
+    volumes:
+      - brickscan_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - brickscan_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: brickscan_backend_prod
+    # Secrets + tunables live here. Start from backend/.env.example.
+    env_file:
+      - ./backend/.env
+    environment:
+      # Connection strings reference the in-compose service names. The password
+      # is interpolated from the same env that compose runs with so it stays in
+      # one place. URL-encode the password if it contains @ : / etc.
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-brickscan_user}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-brickscan}
+      REDIS_URL: redis://redis:6379/0
+      # ── Model serving (in-container onnxruntime CPU) ──────────────────────
+      # student.onnx is NOT in git (86 MB > GitHub's limit) and the backend's
+      # default student path points into mobile/, which doesn't exist in this
+      # image. Point both at the mounted read-only artifacts volume. If these
+      # files are absent the student tier SILENTLY disables (the cascade still
+      # works via Brickognize/Gemini) — a quality regression, not a crash.
+      STUDENT_ONNX_PATH: /artifacts/student.onnx
+      STUDENT_GALLERY_PATH: /artifacts/gallery_index.json
+      ML_MODEL_PATH: /app/models/lego_classifier.onnx
+      # ── Web / security ────────────────────────────────────────────────────
+      # MUST be set to your real app origin(s), comma-separated. Without this
+      # the app falls back to localhost-only CORS and the mobile/web client
+      # can't call it from anywhere else.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-1}   # see Dockerfile.prod for why 1
+    volumes:
+      # Read-only model artifacts, provisioned on the host (scripts/provision_artifacts.sh).
+      - ./artifacts:/artifacts:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      # Bind to localhost only — terminate TLS at a reverse proxy (Caddy/nginx/
+      # Traefik) in front. Change to "8000:8000" only if the proxy is elsewhere.
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 40s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - brickscan_network
+
+volumes:
+  brickscan_db_data:
+  brickscan_redis_data:
+
+networks:
+  brickscan_network:
+    driver: bridge

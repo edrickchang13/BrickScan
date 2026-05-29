@@ -1,0 +1,60 @@
+# Build-context excludes for the backend image (dev + prod Dockerfiles).
+# The build context is ./backend, so paths here are relative to backend/.
+#
+# Goal: keep the image small and free of host-only / secret / regenerable
+# files. Model artifacts the server loads at runtime are provisioned into a
+# volume at deploy time (see DEPLOY.md), NOT baked into the image — so the big
+# blobs under models/ and data/ are excluded here on purpose.
+
+# Python caches / bytecode
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments (host-only)
+.venv/
+venv/
+env/
+ENV/
+
+# Secrets / local env — never bake into an image
+.env
+.env.*
+!.env.example
+
+# Tests are not needed in the runtime image (prod installs runtime deps only)
+tests/
+test_*.py
+*_test.py
+
+# Project docs / scratch — not needed at runtime
+*.md
+COMPLETION_SUMMARY.txt
+DELIVERABLES.md
+FILES_CREATED.md
+FILE_MANIFEST.md
+
+# Large / runtime-provisioned model artifacts. These are mounted from a volume
+# at deploy time (gallery_index.json, student.onnx) or are regenerable caches.
+# Excluding them keeps the image lean and avoids stale copies shadowing the
+# volume. The small committed bundles under models/ (lego_classifier,
+# color_classifier) CAN ship in the image; if you prefer to volume-mount those
+# too, add models/ here.
+data/gallery_index.json
+data/embeddings_cache.pkl
+data/embeddings_cache.misses.txt
+data/calibration_temperatures.json
+*.mystery_backup
+models/backup_*/
+models/spark_*/
+
+# Local dev compose / scripts that don't belong in the runtime image
+docker-compose.yml
+start_local.sh
+
+# OS noise
+.DS_Store
+*.log

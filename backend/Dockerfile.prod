@@ -1,0 +1,91 @@
+# syntax=docker/dockerfile:1
+#
+# Production image for the BrickScan backend.
+#
+# Differences vs the dev Dockerfile (./Dockerfile):
+#   - Multi-stage: a builder compiles wheels, the runtime stage carries only
+#     the installed packages + app code (no gcc, no build headers, smaller).
+#   - RUNTIME deps only (requirements.txt) — pytest/aiosqlite are NOT installed.
+#   - Runs as a non-root user.
+#   - gunicorn with uvicorn workers (no --reload, no source bind-mount).
+#   - HEALTHCHECK hits /health so the orchestrator can gate traffic.
+#
+# Build (from repo root):  docker build -f backend/Dockerfile.prod -t brickscan-backend:prod ./backend
+# See backend/DEPLOY.md for the full runbook, including how the gitignored
+# model artifacts (student.onnx, gallery_index.json) reach the image/volume.
+
+# ── Stage 1: builder ──────────────────────────────────────────────────────────
+FROM python:3.11-slim AS builder
+
+WORKDIR /build
+
+# gcc is only needed to build any wheels that ship as sdists. Kept out of the
+# runtime stage so the final image has no compiler.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build wheels for the runtime requirements into /wheels. Doing this in the
+# builder means the runtime stage installs from local wheels with --no-index,
+# so no network and no compiler are needed there.
+COPY requirements.txt ./
+RUN pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.txt \
+    && pip wheel --no-cache-dir --wheel-dir /wheels gunicorn==21.2.0
+
+# ── Stage 2: runtime ──────────────────────────────────────────────────────────
+FROM python:3.11-slim AS runtime
+
+# postgresql-client is kept for `pg_isready` / ad-hoc psql in the running
+# container (migrations, debugging). Drop it if you want an even leaner image.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    postgresql-client \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install from the prebuilt wheels — no compiler, no index, fully offline.
+COPY --from=builder /wheels /wheels
+COPY requirements.txt ./
+RUN pip install --no-cache-dir --no-index --find-links=/wheels \
+        -r requirements.txt gunicorn==21.2.0 \
+    && rm -rf /wheels
+
+# App code. .dockerignore (backend/.dockerignore) keeps tests, docs, caches,
+# and any local .env / model blobs out of the image layer.
+COPY . .
+
+# Run as a non-root user. UID 1000 so a bind-mounted artifacts volume created
+# by a typical host user is writable without chown gymnastics.
+RUN useradd --create-home --uid 1000 appuser \
+    && chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE 8000
+
+# Container-level health gate. The /health route is dependency-free (it does
+# NOT check DB/Redis), so this only proves the process is up and serving — see
+# DEPLOY.md "Health checks" for why and what a deeper /readyz would add.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+    CMD curl -fsS http://localhost:8000/health || exit 1
+
+# gunicorn process manager + uvicorn ASGI workers.
+#
+# WORKERS=1 BY DEFAULT — this is deliberate, not a placeholder. The SSE scan
+# pipeline (app/services/scan_jobs.py) keeps an in-PROCESS job registry: the
+# worker that handles POST /api/scan/start owns the asyncio.Queue that GET
+# /api/scan/stream/{id} and /result/{id} read from. With >1 worker, a follow-up
+# request can land on a different worker and the job won't be found. To scale
+# past one worker (or one replica) you MUST first move scan_jobs to Redis
+# pub/sub — see the DEPLOY.md punch list. Until then, scale with concurrency
+# (async) inside a single worker, and add replicas only behind sticky sessions.
+ENV WEB_CONCURRENCY=1
+ENV GUNICORN_TIMEOUT=120
+CMD ["sh", "-c", "gunicorn main:app \
+        --worker-class uvicorn.workers.UvicornWorker \
+        --workers ${WEB_CONCURRENCY:-1} \
+        --bind 0.0.0.0:8000 \
+        --timeout ${GUNICORN_TIMEOUT:-120} \
+        --graceful-timeout 30 \
+        --access-logfile - \
+        --error-logfile -"]
