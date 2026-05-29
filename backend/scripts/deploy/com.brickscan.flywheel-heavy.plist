@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd template — SLOW heavy flywheel refresh (macOS dev / local server).
+
+  Mondays 03:00 local: freezes a weekly accuracy snapshot and, if
+  ml/scripts/active_learning_cron.sh exists, hands off to the heavy re-embed /
+  student-distillation pass. Runs backend/scripts/flywheel_refresh_cron.sh --heavy.
+
+  Install: same steps as com.brickscan.flywheel-refresh.plist, but this one uses
+  StartCalendarInterval (weekly) instead of StartInterval.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.brickscan.flywheel-heavy</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>REPLACE_ME/brickscan/backend/scripts/flywheel_refresh_cron.sh</string>
+        <string>--heavy</string>
+    </array>
+
+    <!-- Monday 03:00 local time (Weekday: 0=Sun, 1=Mon) -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>BACKEND_URL</key>
+        <string>http://localhost:8000</string>
+        <key>WINDOW_DAYS</key>
+        <string>30</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>REPLACE_ME/brickscan/backend/data/flywheel/refresh_state/launchd.heavy.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>REPLACE_ME/brickscan/backend/data/flywheel/refresh_state/launchd.heavy.err.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

@@ -1,0 +1,12 @@
+# systemd timer — SLOW heavy flywheel refresh, Mondays 03:00 (Linux prod).
+# Pairs with brickscan-flywheel-heavy.service.
+[Unit]
+Description=Run the BrickScan flywheel heavy refresh weekly (Mon 03:00)
+
+[Timer]
+OnCalendar=Mon *-*-* 03:00:00
+Persistent=true
+Unit=brickscan-flywheel-heavy.service
+
+[Install]
+WantedBy=timers.target

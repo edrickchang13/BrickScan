@@ -1,0 +1,27 @@
+# systemd template — FAST flywheel append loop (Linux prod).
+# Oneshot unit driven by brickscan-flywheel-refresh.timer. Folds the
+# confirmed-feedback backlog into the galleries (NO retraining; idempotent).
+#
+# Install (system-wide):
+#   1. Edit REPLACE_ME (checkout path), User=, and Environment= below.
+#   2. cp brickscan-flywheel-refresh.{service,timer} /etc/systemd/system/
+#   3. systemctl daemon-reload
+#      systemctl enable --now brickscan-flywheel-refresh.timer
+#   Check:  systemctl list-timers | grep flywheel
+#           journalctl -u brickscan-flywheel-refresh.service -n 50
+#
+[Unit]
+Description=BrickScan flywheel — fold confirmed-feedback backlog into galleries (no retrain)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=brickscan
+Environment=BACKEND_URL=http://localhost:8000
+Environment=REFRESH_LIMIT=1000
+# Environment=ADMIN_AUTH_TOKEN=REPLACE_ME_TOKEN
+ExecStart=/bin/bash REPLACE_ME/brickscan/backend/scripts/flywheel_refresh_cron.sh
+# Keep it gentle — this is a background maintenance task.
+Nice=10
+IOSchedulingClass=idle

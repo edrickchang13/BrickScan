@@ -143,9 +143,14 @@ retraining.
 | `scripts/gallery_index.py` | on-device append-only USearch int8 gallery: `build_from_embeddings`, **`append`**, `remove`, `search`, `margin`, `save`/`load`, `rebuild`; CLI `demo` / `append` / `stats` |
 | `scripts/color_gallery_append.py` | append confirmed colour crop(s) to `color_model.npz` via the baked LDA (no refit); CLI `append` / `append-dir` / `inspect` |
 | `backend/app/ml/flywheel_ingest.py` | server orchestrator: embed once → append part galleries → journal colour exemplar; `ingest_confirmed`, `gallery_status` |
-| `backend/app/local_inventory/flywheel_routes.py` | `should_flag_for_review` (τ), `POST /flywheel/confirm`, `POST /flywheel/check-uncertainty`, `GET /flywheel/status` |
+| `backend/app/local_inventory/flywheel_routes.py` | `should_flag_for_review` (τ, variant-aware), `POST /flywheel/confirm`, `/check-uncertainty`, `GET /flywheel/status`, **`POST /flywheel/refresh`**, **`GET /flywheel/metrics`**, **`POST /flywheel/metrics/snapshot`** |
+| `backend/app/ml/flywheel_refresh.py` | **OPS:** scheduled fast append loop — `refresh_galleries(db)` (replay confirmed backlog through the hot path, idempotent cursor = `used_for_training`), `heavy_refresh_status`, `read_state` |
+| `backend/app/ml/flywheel_metrics.py` | **OPS:** monitoring — `flywheel_metrics(db)` (gallery size, coverage, correction volume, top confusion pairs) + `write_metrics_snapshot` |
+| `backend/scripts/flywheel_refresh_cron.sh` | **OPS:** cron entry — fast append + metrics snapshot; `--heavy` adds accuracy snapshot + Track-D handoff |
+| `backend/scripts/deploy/` | **OPS:** launchd plists + systemd `.service`/`.timer` templates (fast 15-min + heavy weekly) + README |
 | `backend/app/services/visual_search.py` | **+`add_entry`** (runtime append + persist + lazy rebuild) |
 | `backend/app/ml/embedding_library.py` | **+`add_exemplar`** (running-mean prototype merge + persisted counts) |
+| `backend/tests/test_flywheel_refresh.py`, `test_flywheel_uncertainty.py` | **OPS:** refresh idempotency + DB-schema integration; uncertainty-trigger + variant-collapse |
 | `backend/main.py` | registers `flywheel_router` |
 
 ## How to run
@@ -198,3 +203,132 @@ curl localhost:8000/api/local-inventory/flywheel/status
   (1 byte/dim) — at 4 exemplars/part the projections in `ONDEVICE_NOTES.md` stay
   within mobile budget. Use `gallery_index.remove()` to drop bad exemplars and
   `rebuild()` to defragment.
+
+---
+
+## OPS — running the loop
+
+The sections above prove the *mechanism* (a confirmed scan improves the next one
+with no retrain). This section is the *operational loop*: how that mechanism runs
+continuously, what it writes for monitoring, and how the review queue feeds it.
+
+There are two cadences. The **fast** one is the whole point — it never retrains.
+The **heavy** one is optional gallery compaction.
+
+```
+              ┌──────────────────── every ~15 min (FAST, no retrain) ───────────────────┐
+   confirmed  │  POST /flywheel/refresh   → replay un-ingested ScanFeedback backlog       │
+   ScanFeedback│   through ingest_confirmed (THE hot path) → append to galleries          │
+   on disk ───┼─▶ POST /flywheel/metrics/snapshot → coverage / volume / confusion pairs   │
+              │   → data/flywheel/metrics/<UTC>.json (+ latest.json)                       │
+              └────────────────────────────────────────────────────────────────────────┘
+              ┌──────────────────── weekly Mon 03:00 (HEAVY, optional) ──────────────────┐
+              │  POST /feedback/snapshot  → freeze top1/top3 accuracy (FeedbackEvalSnapshot)│
+              │  bash ml/scripts/active_learning_cron.sh  → re-embed / student distillation │
+              │     (Track D; a no-op until that script lands — fast loop already wins)     │
+              └────────────────────────────────────────────────────────────────────────┘
+```
+
+### 1. Scheduled refresh job — fast append loop (no retrain)
+
+`backend/scripts/flywheel_refresh_cron.sh` drives the loop over HTTP (same shape
+as `weekly_eval_cron.sh`). Default run = fast cadence; `--heavy` adds the weekly
+pass.
+
+- **`backend/app/ml/flywheel_refresh.py :: refresh_galleries(db)`** pulls every
+  `ScanFeedback` row that has a stored crop but has **not** yet been folded in
+  (`used_for_training == False`), re-embeds each crop and appends it through the
+  **same `ingest_confirmed` hot path** a live `/flywheel/confirm` uses — so the
+  batch path and the live path are byte-for-byte the same gallery write. NO
+  retraining.
+  - **Idempotent + resumable.** `used_for_training` is the durable cursor: a row
+    is flipped to `True` only after its append succeeds, in one batch commit. A
+    crash before commit just means those rows are retried next run; overlapping
+    cron fires never double-ingest. Crops are read off disk, so the append is
+    *not* re-journaled (`journal_crops=False`).
+  - **Degrades gracefully.** If the encoder ONNX isn't deployed, the append is a
+    no-op and the row is left `used_for_training=False` for a later run to retry
+    (reported in the run `notes`). A missing crop file → `skipped_no_image`; an
+    empty/`unknown` part → `skipped_no_part`. One bad row never kills the batch.
+  - Endpoint: **`POST /api/local-inventory/flywheel/refresh`**
+    (`?limit=1000&only_corrections=false&dry_run=false`). `only_corrections=true`
+    replays just the rows where the model was wrong (the most informative);
+    `dry_run=true` counts candidates + reports gallery sizes without appending.
+- **Heavy refresh** is delegated, never run inline from a request. On `--heavy`
+  the cron freezes an accuracy snapshot and, *if* `ml/scripts/active_learning_cron.sh`
+  exists, hands off to it. `flywheel_refresh.heavy_refresh_status()` reports
+  whether that script is present; until it lands the heavy pass is a clean no-op.
+
+**Install the timers** (templates + per-cadence env in `backend/scripts/deploy/`):
+
+```bash
+# macOS (launchd, per-user) — fast every 15 min + heavy weekly
+cp backend/scripts/deploy/com.brickscan.flywheel-refresh.plist ~/Library/LaunchAgents/
+cp backend/scripts/deploy/com.brickscan.flywheel-heavy.plist   ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.brickscan.flywheel-refresh.plist
+launchctl load ~/Library/LaunchAgents/com.brickscan.flywheel-heavy.plist
+
+# Linux (systemd, system-wide)
+cp backend/scripts/deploy/brickscan-flywheel-*.{service,timer} /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now brickscan-flywheel-refresh.timer brickscan-flywheel-heavy.timer
+
+# …or plain cron
+*/15 * * * *  bash /path/to/brickscan/backend/scripts/flywheel_refresh_cron.sh
+0 3 * * 1     bash /path/to/brickscan/backend/scripts/flywheel_refresh_cron.sh --heavy
+```
+
+Replace every `REPLACE_ME` (checkout path, `User=` on Linux) first. Env vars:
+`BACKEND_URL`, `ADMIN_AUTH_TOKEN`, `REFRESH_LIMIT`, `ONLY_CORRECTIONS`,
+`WINDOW_DAYS`, `HEAVY_SCRIPT`, `FLYWHEEL_LOG` (see `backend/scripts/deploy/README.md`).
+
+### 2. Monitoring — accuracy + coverage over time
+
+Two complementary time series, both file-or-DB backed (no new migration):
+
+| signal | where | written by |
+|---|---|---|
+| top-1 / top-3 accuracy trend | `feedback_eval_snapshots` table → `GET /feedback/stats` `accuracy_trend` | `POST /feedback/snapshot` (heavy cadence) |
+| flywheel health (gallery size, parts/colours covered, correction volume 24h/7d/30d, **top confusion pairs**, pending-ingest backlog, last-refresh summary) | `GET /flywheel/metrics` (live) + `data/flywheel/metrics/<UTC>.json` & `latest.json` | `POST /flywheel/metrics/snapshot` (fast cadence) |
+| last refresh run | `data/flywheel/refresh_state/last_refresh.json` (cumulative ingested + per-run summary) | every `refresh_galleries` call |
+
+`backend/app/ml/flywheel_metrics.py :: flywheel_metrics(db)` computes the health
+summary; the confusion-pair + coverage + volume helpers are pure and unit-tested
+(`tests/test_flywheel_refresh.py`). Quick look:
+
+```bash
+curl localhost:8000/api/local-inventory/flywheel/metrics | jq
+# → gallery.{visual_search_size, embedding_library_size, encoder_available},
+#   coverage.{parts_with_feedback, colors_with_feedback},
+#   correction_volume.{last_24h,last_7d,last_30d,total},
+#   top_confusion_pairs[], pending_ingest, latest_accuracy_snapshot, last_refresh
+```
+
+### 3. Review-queue ops — what feeds the loop
+
+The loop is fed by confirmations; the review queue is how low-confidence scans
+get in front of a user to *become* confirmations.
+
+- **`GET /feedback/pending-review`** surfaces scans whose top-1 confidence is
+  below threshold (lowest first), skipping any the user already rated — the batch
+  with the biggest expected impact.
+- **`POST /flywheel/check-uncertainty`** is the in-the-moment margin trigger:
+  flag when the gap from top-1 to the next **different** part `< τ` (0.05), or
+  top-1 `< τ_abs` (0.55). "Different part" collapses mold/print variants first
+  (`3001` / `3001a` / `3001pr0001` are one brick — via the cascade's
+  `part_num_normalizer.collapse_variant`), so a confident brick whose runner-up
+  is just a variant of itself is **not** flagged. *(This made the unit-tested
+  `should_flag_for_review._norm_part` match the §1 contract above — it previously
+  only stripped leading zeros; see `tests/test_flywheel_uncertainty.py`.)*
+- **`POST /flywheel/confirm`** closes the loop: a confirmed `(crop, part, color)`
+  is appended to the galleries immediately (live hot path) **and** written as a
+  `ScanFeedback` row — which is exactly the backlog the scheduled
+  `refresh_galleries` re-folds (resilience for any confirmation that arrived
+  before the encoder was deployed, plus `/scan-feedback` corrections that landed
+  a labelled crop without a live append).
+
+End-to-end: `scan → check-uncertainty → (review) → confirm → live append + feedback row
+→ scheduled refresh re-folds the backlog → metrics snapshot → accuracy trend`.
+Verified by `tests/test_flywheel_refresh.py` (refresh idempotency + DB-schema
+integration) and `tests/test_flywheel_uncertainty.py` (trigger). Tests are
+import-safe without the encoder/sklearn (heavy imports are function-local).

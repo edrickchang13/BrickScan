@@ -73,7 +73,26 @@ flywheel_router = APIRouter(
 # ── uncertainty signal (pure function, also importable by the scan path) ──────
 
 def _norm_part(pn: Optional[str]) -> str:
-    return (pn or "").strip().lower().lstrip("0") or "0"
+    """Canonical key for "is this the same brick?" in the margin computation.
+
+    Collapses mold/print variants to their base mold (3001a → 3001, 3001pr0001 →
+    3001) via the cascade's own part_num_normalizer, then strips leading zeros /
+    lowercases. This is what lets the margin be measured to the next genuinely
+    DIFFERENT part — so a confident scan whose runner-up is just a mold variant
+    of the same brick is NOT needlessly flagged for review (FLYWHEEL.md §1).
+
+    Falls back to the plain zero-strip if the normaliser isn't importable, so
+    this never breaks the scan path.
+    """
+    raw = (pn or "").strip()
+    if not raw:
+        return "0"
+    try:
+        from app.services.part_num_normalizer import collapse_variant
+        raw = collapse_variant(raw)
+    except Exception:  # noqa: BLE001 — normaliser optional; degrade gracefully
+        pass
+    return raw.lower().lstrip("0") or "0"
 
 
 def should_flag_for_review(
@@ -274,3 +293,67 @@ async def flywheel_status() -> Dict[str, Any]:
     s["margin_tau"] = FLYWHEEL_MARGIN_TAU
     s["conf_floor"] = FLYWHEEL_CONF_FLOOR
     return s
+
+
+# ── POST /flywheel/refresh ─────────────────────────────────────────────────────
+#
+# The OPERATIONAL loop (see ml/FLYWHEEL.md §OPS). A scheduled job (cron / timer
+# → backend/scripts/flywheel_refresh_cron.sh) POSTs here on a fast cadence to
+# fold the confirmed-feedback backlog into the galleries via the SAME hot path a
+# live /flywheel/confirm uses — NO retraining. Idempotent: each appended row is
+# flipped used_for_training=True so re-runs skip it (the DB flag is the cursor,
+# so the job is resumable). The slower-cadence heavy refresh (re-embed /
+# distillation) is delegated to ml/scripts/active_learning_cron.sh by the cron
+# wrapper, not launched from here.
+
+@flywheel_router.post("/flywheel/refresh")
+async def flywheel_refresh(
+    limit: int = 1000,
+    only_corrections: bool = False,
+    dry_run: bool = False,
+    db: Session = Depends(get_local_db),
+) -> Dict[str, Any]:
+    """Fold the confirmed-feedback backlog into the galleries (no retrain).
+
+    Query params:
+      limit             cap rows processed this pass (default 1000)
+      only_corrections  replay only rows where the model was wrong (default false)
+      dry_run           count candidates + report sizes, append nothing
+    """
+    from app.ml.flywheel_refresh import refresh_galleries, heavy_refresh_status
+    result = refresh_galleries(
+        db, limit=limit, only_corrections=only_corrections, dry_run=dry_run)
+    payload = result.as_dict()
+    payload["heavy_refresh"] = heavy_refresh_status()
+    return payload
+
+
+# ── GET /flywheel/metrics ──────────────────────────────────────────────────────
+#
+# Operational health summary: gallery sizes, coverage, recent correction volume,
+# top confusion pairs, the latest accuracy snapshot, and when the append loop
+# last ran. Read-only — safe to poll from a dashboard.
+
+@flywheel_router.get("/flywheel/metrics")
+async def flywheel_metrics_endpoint(
+    db: Session = Depends(get_local_db),
+) -> Dict[str, Any]:
+    """Point-in-time flywheel monitoring summary (read-only)."""
+    from app.ml.flywheel_metrics import flywheel_metrics
+    return flywheel_metrics(db)
+
+
+# ── POST /flywheel/metrics/snapshot ─────────────────────────────────────────────
+#
+# Same summary as GET /flywheel/metrics, but ALSO journals it to
+# data/flywheel/metrics/<UTC-stamp>.json (+ latest.json) so a cron builds a
+# time series on disk without a DB migration. Pairs with weekly_eval_cron.sh.
+
+@flywheel_router.post("/flywheel/metrics/snapshot")
+async def flywheel_metrics_snapshot(
+    db: Session = Depends(get_local_db),
+) -> Dict[str, Any]:
+    """Compute + journal a flywheel metrics snapshot. Returns it + the file path."""
+    from app.ml.flywheel_metrics import write_metrics_snapshot
+    summary, path = write_metrics_snapshot(db)
+    return {"snapshot_path": path, "metrics": summary}

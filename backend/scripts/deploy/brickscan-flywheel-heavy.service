@@ -1,0 +1,19 @@
+# systemd template — SLOW heavy flywheel refresh (Linux prod).
+# Oneshot unit driven by brickscan-flywheel-heavy.timer. Freezes a weekly
+# accuracy snapshot and (if ml/scripts/active_learning_cron.sh exists) hands off
+# to the heavy re-embed / student-distillation pass. Runs with --heavy.
+#
+# Install: same as brickscan-flywheel-refresh.service, with the heavy .timer.
+[Unit]
+Description=BrickScan flywheel — weekly accuracy snapshot + heavy re-embed/distillation
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=brickscan
+Environment=BACKEND_URL=http://localhost:8000
+Environment=WINDOW_DAYS=30
+ExecStart=/bin/bash REPLACE_ME/brickscan/backend/scripts/flywheel_refresh_cron.sh --heavy
+# A heavy GPU job may run for a while; let it.
+TimeoutStartSec=0

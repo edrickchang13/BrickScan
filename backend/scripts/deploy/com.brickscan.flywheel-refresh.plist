@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd template — FAST flywheel append loop (macOS dev / local server).
+
+  Folds the confirmed-feedback backlog into the galleries every 15 minutes via
+  backend/scripts/flywheel_refresh_cron.sh (NO retraining; idempotent).
+
+  Install (per-user):
+    1. Edit the two REPLACE_ME paths below to your checkout + a writable log dir.
+    2. cp this file to ~/Library/LaunchAgents/com.brickscan.flywheel-refresh.plist
+    3. launchctl load   ~/Library/LaunchAgents/com.brickscan.flywheel-refresh.plist
+       launchctl start  com.brickscan.flywheel-refresh        # run once now
+    To stop:  launchctl unload ~/Library/LaunchAgents/com.brickscan.flywheel-refresh.plist
+
+  Heavy weekly pass uses the sibling plist com.brickscan.flywheel-heavy.plist.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.brickscan.flywheel-refresh</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>REPLACE_ME/brickscan/backend/scripts/flywheel_refresh_cron.sh</string>
+    </array>
+
+    <!-- every 15 minutes -->
+    <key>StartInterval</key>
+    <integer>900</integer>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>BACKEND_URL</key>
+        <string>http://localhost:8000</string>
+        <key>REFRESH_LIMIT</key>
+        <string>1000</string>
+        <!-- Uncomment if the flywheel endpoints require a bearer token:
+        <key>ADMIN_AUTH_TOKEN</key>
+        <string>REPLACE_ME_TOKEN</string>
+        -->
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>REPLACE_ME/brickscan/backend/data/flywheel/refresh_state/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>REPLACE_ME/brickscan/backend/data/flywheel/refresh_state/launchd.err.log</string>
+
+    <!-- Don't run at load; wait for the first interval (server is likely up by then). -->
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

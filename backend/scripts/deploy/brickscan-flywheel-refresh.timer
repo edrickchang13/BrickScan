@@ -1,0 +1,15 @@
+# systemd timer — FAST flywheel append loop, every 15 minutes (Linux prod).
+# Pairs with brickscan-flywheel-refresh.service. See that file for install steps.
+[Unit]
+Description=Run the BrickScan flywheel fast append loop every 15 minutes
+
+[Timer]
+# First run 2 min after boot, then every 15 minutes.
+OnBootSec=2min
+OnUnitActiveSec=15min
+# Don't pile up missed runs after downtime — just resume the cadence.
+Persistent=false
+Unit=brickscan-flywheel-refresh.service
+
+[Install]
+WantedBy=timers.target
