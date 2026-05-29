@@ -4,15 +4,20 @@ Hybrid LEGO brick recognition service — updated cascade.
 New pipeline (replaces local ONNX EfficientNet-B4 at the tail):
   1. Brickognize API      — primary, fast ConvNeXt-T
   2. Gemini 2.5 Flash     — fallback when Brickognize is uncertain
-  3. Contrastive k-NN     — 128-dim DINOv2 embedding similarity search
+  3. Student retrieval    — distilled FastViT-SA24 encoder + on-device int8
+                             gallery k-NN (768-d). The validated 90.1% top-1 /
+                             95.6% recall@3 engine that ships on-device; now the
+                             backend's primary LOCAL recognizer.
+                             (source="student_retrieval")
+  4. Contrastive k-NN     — 128-dim DINOv2 embedding similarity search
                              (source="contrastive_knn")
-  4. Distilled MobileNetV3 — knowledge-distilled from DINOv2 teacher
+  5. Distilled MobileNetV3 — knowledge-distilled from DINOv2 teacher
                              (source="distilled_model")
 
-Steps 3-4 use the new ModelManager / EmbeddingLibrary singletons which
-fail gracefully (returning [] / None) when the Spark-trained model files
-are not yet present, so the existing behaviour is fully preserved during
-development.
+Steps 3-5 use the new ModelManager / EmbeddingLibrary / student_retrieval
+singletons which fail gracefully (returning [] / None) when the trained model
+files are not yet present, so the existing behaviour is fully preserved when
+the artifacts are absent.
 
 The source field is propagated to the mobile app for display.
 """
@@ -39,6 +44,21 @@ AGREEMENT_BOOST             = 0.10
 
 # k-NN cosine distance below which we trust the result (0 = identical, 2 = max)
 KNN_DISTANCE_THRESHOLD = 0.30
+
+# ── Student retrieval tier ──────────────────────────────────────────────────
+# The distilled FastViT-SA24 student + int8 gallery k-NN (app/services/
+# student_retrieval.py) is the validated 90.1% top-1 / 95.6% recall@3 local
+# engine. Enabled by default; it self-disables (returns []) when the ONNX /
+# gallery files are absent, so this flag only needs flipping to force it OFF
+# for an A/B (SCAN_STUDENT_RETRIEVAL_ENABLED=false).
+STUDENT_RETRIEVAL_ENABLED = (
+    os.environ.get("SCAN_STUDENT_RETRIEVAL_ENABLED", "true").lower() == "true"
+)
+# Cosine similarity at/above which a student hit is treated as a confident
+# local match — lets it short-circuit the weaker legacy k-NN / distilled tiers.
+STUDENT_CONFIDENT_SIMILARITY = 0.55
+# How many gallery exemplars to pull per query before aggregating by part_num.
+STUDENT_KNN_NEIGHBORS = 20
 
 # Gates for the optional cascade enhancements. All disabled by default —
 # Brickognize alone (with Gemini fallback for low-confidence scans) is the
@@ -395,15 +415,113 @@ async def _safe_gemini(
         return []
 
 
+def _merge_local_with_student(
+    student_preds: List[Dict], other_preds: List[Dict]
+) -> List[Dict]:
+    """Combine the student-retrieval tier with the other local sources.
+
+    The student is the validated 90.1%/95.6% engine, so when it's confident
+    (top sim ≥ STUDENT_CONFIDENT_SIMILARITY) its predictions LEAD the local
+    list. Otherwise everything is interleaved by confidence. Deduplicated by
+    normalised part_num (first occurrence wins, preserving the leading source).
+    Capped at 5.
+    """
+    if not student_preds:
+        return other_preds[:5]
+
+    student_confident = student_preds[0]["confidence"] >= STUDENT_CONFIDENT_SIMILARITY
+    if student_confident:
+        ordered = student_preds + other_preds
+    else:
+        ordered = sorted(
+            student_preds + other_preds,
+            key=lambda x: x.get("confidence", 0),
+            reverse=True,
+        )
+
+    out: List[Dict] = []
+    seen: set = set()
+    for p in ordered:
+        norm = _normalize_part_num(p.get("part_num", ""))
+        if norm in seen or norm in ("", "unknown"):
+            continue
+        seen.add(norm)
+        out.append(p)
+        if len(out) >= 5:
+            break
+    return out
+
+
+def _student_retrieval_predict(image_bytes: bytes) -> List[Dict]:
+    """Run the distilled student + int8 gallery k-NN tier.
+
+    Returns cascade-shaped prediction dicts (source="student_retrieval"),
+    highest cosine first, or [] when the student ONNX / gallery aren't present.
+    Synchronous + CPU-bound; the caller runs it inside _safe_local_predict
+    which is already executed as a background task off the request path.
+    """
+    try:
+        from app.services import student_retrieval
+
+        if not student_retrieval.is_available():
+            return []
+        hits = student_retrieval.predict(
+            image_bytes, top_k=5, knn=STUDENT_KNN_NEIGHBORS,
+        )
+        preds: List[Dict] = []
+        for h in hits:
+            preds.append({
+                "part_num":   h.part_num,
+                "part_name":  "",
+                "confidence": float(h.confidence),   # aggregated cosine in [0,1]
+                "color_id":   None,
+                "color_name": None,
+                "color_hex":  None,
+                "source":     "student_retrieval",
+                "neighbor_count": h.neighbor_count,
+            })
+        if preds:
+            logger.info(
+                "student_retrieval: top %s (sim=%.3f, %d neighbours, %d parts)",
+                preds[0]["part_num"], preds[0]["confidence"],
+                preds[0]["neighbor_count"], len(preds),
+            )
+        return preds
+    except Exception as e:
+        logger.debug("student_retrieval tier skipped: %s", e)
+        return []
+
+
 async def _safe_local_predict(image_bytes: bytes) -> List[Dict]:
     """
     Run the local model sub-cascade:
+      0. Student retrieval (distilled FastViT-SA24 + int8 gallery k-NN) —
+         the validated 90.1%/95.6% engine; leads the local list.
       1. Contrastive k-NN (fast, requires embeddings cache)
       2. Distilled MobileNetV3 (if k-NN isn't confident enough)
       3. Legacy EfficientNet ONNX (final fallback)
 
-    Returns a merged list with the best local prediction first.
+    Returns a merged list with the best local prediction first. Each tier
+    self-disables when its model files are absent, so this degrades cleanly to
+    the pre-student behaviour.
     """
+    # ── Step 0: Student retrieval (highest-priority local source) ────────────
+    # Runs off the event loop so the ONNX forward + matmul don't block other
+    # awaited cascade work. Self-disables (→ []) when artifacts are missing.
+    student_preds: List[Dict] = []
+    if STUDENT_RETRIEVAL_ENABLED:
+        try:
+            student_preds = await asyncio.to_thread(
+                _student_retrieval_predict, image_bytes
+            )
+        except Exception as e:
+            logger.debug("student_retrieval tier failed (non-fatal): %s", e)
+            student_preds = []
+    student_confident = bool(
+        student_preds
+        and student_preds[0]["confidence"] >= STUDENT_CONFIDENT_SIMILARITY
+    )
+
     try:
         from app.ml.model_manager import ModelManager
         from app.ml.embedding_library import EmbeddingLibrary, KNN_CONFIDENCE_THRESHOLD
@@ -470,34 +588,41 @@ async def _safe_local_predict(image_bytes: bytes) -> List[Dict]:
             except Exception as e:
                 logger.debug("visual_search tier skipped: %s", e)
 
-        # ── Step 2: Distilled student (if k-NN uncertain or unavailable) ─────
-        if knn_top is None and mm.student_available:
-            student_preds = mm.classify_image(image_bytes, top_k=5)
-            if student_preds:
+        # ── Step 2: Distilled MobileNetV3 (if k-NN uncertain or unavailable) ──
+        # Only consulted when neither the student-retrieval tier nor contrastive
+        # k-NN produced a confident lead — it's the weakest of the local models.
+        if knn_top is None and not student_confident and mm.student_available:
+            distilled_preds = mm.classify_image(image_bytes, top_k=5)
+            if distilled_preds:
                 logger.info(
                     "Distilled model: %s (%.0f%%)",
-                    student_preds[0]["part_num"], student_preds[0]["confidence"] * 100,
+                    distilled_preds[0]["part_num"], distilled_preds[0]["confidence"] * 100,
                 )
-                # Merge: deduplicate with k-NN results, student first when k-NN uncertain
-                seen_parts = {p["part_num"] for p in results}
-                merged_local: List[Dict] = student_preds.copy()
+                # Merge: deduplicate with k-NN results, distilled first when k-NN uncertain
+                merged_local: List[Dict] = distilled_preds.copy()
                 for p in results:
                     if p["part_num"] not in {x["part_num"] for x in merged_local}:
                         merged_local.append(p)
                 merged_local.sort(key=lambda x: x.get("confidence", 0), reverse=True)
-                return merged_local[:5]
+                # Student retrieval leads when confident; otherwise interleaves by score.
+                return _merge_local_with_student(student_preds, merged_local)
 
-        # k-NN was confident — return its results (they're already sorted)
-        if results:
-            return results[:5]
+        # k-NN was confident (or student is) — return the combined results.
+        if results or student_preds:
+            return _merge_local_with_student(student_preds, results)
 
     except Exception as e:
         logger.warning("New local models failed: %s — trying legacy ONNX", e)
+        # Even if the contrastive/distilled stack raised, surface the student
+        # tier's predictions — it's the validated engine and ran independently.
+        if student_preds:
+            return student_preds[:5]
 
     # ── Step 3: Legacy EfficientNet ONNX (final fallback) ────────────────────
     try:
         legacy = await onnx_predict(image_bytes) or []
-        return [{**p, "source": "local_model"} for p in legacy]
+        legacy_preds = [{**p, "source": "local_model"} for p in legacy]
+        return _merge_local_with_student(student_preds, legacy_preds)
     except Exception as e:
         logger.warning("Legacy ONNX fallback failed: %s", e)
-        return []
+        return student_preds[:5]

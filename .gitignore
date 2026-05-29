@@ -198,3 +198,4 @@ backend/models/best.onnx.data
 # Spark-side snapshot downloads — local reference copies of models trained on
 # the DGX. The canonical backend model lives at backend/models/lego_classifier.onnx.
 backend/models/spark_*/
+backend/data/gallery_index.json
