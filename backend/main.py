@@ -9,6 +9,7 @@ from app.local_inventory import routes as local_inventory_routes
 from app.local_inventory import sets_routes
 from app.local_inventory.feedback_routes import feedback_router
 from app.local_inventory.flywheel_routes import flywheel_router
+from app.local_inventory.telemetry_routes import telemetry_router
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,7 @@ app.include_router(scan.router, prefix="/api")
 app.include_router(bricklink.router)
 app.include_router(feedback_router)  # YOLO + active learning
 app.include_router(flywheel_router)  # active-learning flywheel: confirm -> append (no retrain)
+app.include_router(telemetry_router)  # Phase 4 live-scan device-sweep telemetry ingest
 app.include_router(local_inventory_routes.router)
 app.include_router(sets_routes.router)
 # Inventory insights — buildable sets + theme/year/category analytics.

@@ -48,7 +48,15 @@ import {
   isTrackCounted,
   markTrackCounted,
   disposeLiveScanEngine,
+  isEmbeddingReady,
+  gallerySize,
 } from '@/ml/liveScanEngine';
+import {
+  telemetry,
+  startTelemetrySession,
+  endTelemetrySession,
+} from '@/ml/liveScanTelemetry';
+import { defaultSinks } from '@/ml/telemetrySinks';
 
 // Optional expo-haptics — no-ops gracefully if module isn't installed.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -155,9 +163,54 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
   // + gallery drop in via configureLiveScanEngine() with no change here. Always
   // runs (independent of on-device YOLO) so retrieval/colour can layer onto the
   // backend-detected bboxes too. Disposed on unmount.
+  //
+  // Phase 4 OUTER-loop: when the liveScanTelemetry debug flag is on, open a
+  // telemetry session keyed to this scan, then record the engine's context once
+  // it has loaded. The session is flushed (file + optional backend POST) on
+  // Done and on unmount. Off by default → telemetry() is a no-op recorder.
+  const telemetryToBackendRef = useRef(false);
   useEffect(() => {
-    void ensureLiveScanLoaded();
-    return () => { void disposeLiveScanEngine(); };
+    (async () => {
+      const [telemOn, localOnly] = await Promise.all([
+        readBool(SETTINGS_KEYS.liveScanTelemetry),
+        readBool(SETTINGS_KEYS.localOnly),
+      ]);
+      if (telemOn) {
+        telemetryToBackendRef.current = !localOnly;
+        startTelemetrySession(true, { platform: Platform.OS });
+      }
+      const ready = await ensureLiveScanLoaded();
+      if (telemOn) {
+        telemetry().setContext({
+          embeddingReady: isEmbeddingReady(),
+          gallerySize: gallerySize(),
+          device: { platform: Platform.OS, engineReady: ready },
+        });
+      }
+    })();
+    return () => {
+      // Persist whatever was recorded this session before tearing down.
+      void flushTelemetry();
+      void disposeLiveScanEngine();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Flush the active telemetry session to its sinks, then reset to a disabled
+  // no-op recorder. Safe to call repeatedly (no-op when nothing was recorded).
+  const flushTelemetry = useCallback(async () => {
+    const t = telemetry();
+    if (!t.hasData()) {
+      endTelemetrySession();
+      return;
+    }
+    try {
+      await t.flush(defaultSinks(telemetryToBackendRef.current));
+    } catch {
+      // best-effort — never block teardown on a telemetry write
+    } finally {
+      endTelemetrySession();
+    }
   }, []);
 
   // ── Permission ────────────────────────────────────────────────────────────
@@ -301,7 +354,10 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
             void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           }
         }
-        // GC fusion/commit state for tracks the tracker just dropped.
+        // GC fusion/commit state for tracks the tracker just dropped. Telemetry
+        // deliberately RETAINS the dropped track's record so a long sweep keeps
+        // every piece's frames for the session aggregate (parity with the
+        // inner-loop harness, which never drops a piece).
         const survivingIds = new Set(next.map(t => t.id));
         for (const t of prev) {
           if (!survivingIds.has(t.id)) forgetTrack(t.id);
@@ -360,10 +416,19 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
             track.colorHex || '',
           );
           trackInventoryIdRef.current.set(track.id, item.id);
+          telemetry().recordEvent(track.id, {
+            kind: 'inventory_add',
+            partNum: result.fusedPartNum,
+            colorId: result.colorId,
+          });
         } catch {
           // Add failed — allow a later frame to retry by un-marking.
           // committedTrackIds is in the engine; clear our local id only.
           trackInventoryIdRef.current.delete(track.id);
+          telemetry().recordEvent(track.id, {
+            kind: 'inventory_add_failed',
+            partNum: result.fusedPartNum,
+          });
         }
         continue;
       }
@@ -398,6 +463,7 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
     colorId: string,
     colorName: string,
   ) => {
+    telemetry().recordEvent(track.id, { kind: 'server_verify_start' });
     try {
       const [nx1, ny1, nx2, ny2] = track.bbox;
       const x = Math.max(0, Math.round(nx1 * frame.width));
@@ -417,6 +483,11 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
       const res = await apiClient.scanImage(b64);
       const top = res?.predictions?.[0];
       if (!top?.partNum) return;
+      telemetry().recordEvent(track.id, {
+        kind: 'server_verify_result',
+        partNum: top.partNum,
+        detail: `conf=${(top.confidence ?? 0).toFixed(3)}`,
+      });
 
       const existingId = trackInventoryIdRef.current.get(track.id);
       if (existingId) {
@@ -436,6 +507,11 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
               top.colorHex || track.colorHex || '',
             );
             trackInventoryIdRef.current.set(track.id, item.id);
+            telemetry().recordEvent(track.id, {
+              kind: 'server_correction',
+              partNum: corrected,
+              detail: 'replaced prior commit',
+            });
           } catch { /* leave the original entry as-is on failure */ }
         }
       } else if (!isTrackCounted(track.id)) {
@@ -450,6 +526,12 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
             top.colorHex || track.colorHex || '',
           );
           trackInventoryIdRef.current.set(track.id, item.id);
+          telemetry().recordEvent(track.id, {
+            kind: 'inventory_add',
+            partNum: top.partNum,
+            colorId: top.colorId || colorId,
+            detail: 'server-adopted',
+          });
         } catch {
           trackInventoryIdRef.current.delete(track.id);
         }
@@ -526,11 +608,14 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
         // Individual add failures are non-fatal; continue with the rest.
       }
     }
+    // Phase 4: persist the live-scan telemetry for this sweep before leaving
+    // (idempotent — the unmount cleanup's flush will then no-op).
+    await flushTelemetry();
     await clearSession();
     setShowConfirm(false);
     setTracks([]);
     navigation.goBack();
-  }, [addItem, navigation]);
+  }, [addItem, navigation, flushTelemetry]);
 
   // ── Derived props ─────────────────────────────────────────────────────────
   const bboxVisuals = useMemo<BboxTrackVisual[]>(() => tracks.map(t => ({

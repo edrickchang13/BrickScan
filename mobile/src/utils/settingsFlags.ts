@@ -17,6 +17,12 @@ export const SETTINGS_KEYS = {
   // Costs ~300-500ms per frame but adds Brickognize-grade accuracy on top
   // of the on-device YOLO 28-class label.
   refineOnDeviceWithBackend: 'brickscan_refine_on_device_with_backend',
+  // Phase 4 OUTER-loop: record per-track live-scan telemetry (predictions,
+  // confidence, fusion, commits, latency, errors) to a JSON file in the app's
+  // document dir (and optionally POST it to the backend on Done). Off by
+  // default — pure debug instrumentation, mirrors the inner-loop harness schema
+  // so a real device sweep is diffable against ml/scripts/livescan_harness.py.
+  liveScanTelemetry: 'brickscan_livescan_telemetry',
 } as const;
 
 export async function readBool(key: string, fallback = false): Promise<boolean> {

@@ -36,7 +36,10 @@ const jpeg: { decode: (data: Uint8Array, opts?: { useTArray?: boolean }) => { da
 import { EmbeddingModel } from './embeddingRetrieval';
 import { PartIndex, type PartIndexData, type PartMatch } from './partIndex';
 import { colorClassifier } from './colorClassifier';
-import { TrackFusion, type FusedMatch, type SearchFn } from '@/utils/trackFusion';
+import {
+  TrackFusion, DEFAULT_FUSION_OPTS, type FusedMatch, type SearchFn,
+} from '@/utils/trackFusion';
+import { telemetry } from './liveScanTelemetry';
 import type { Bbox } from '@/utils/bboxTracker';
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -186,6 +189,11 @@ export function isEmbeddingReady(): boolean {
   return embedderReady && embedder.isReady();
 }
 
+/** Number of gallery exemplars loaded, or null if the index isn't ready. */
+export function gallerySize(): number | null {
+  return partIndex ? partIndex.size() : null;
+}
+
 /** Dispose ML state (e.g. on leaving the scan screen). Clears fusion + commits. */
 export async function disposeLiveScanEngine(): Promise<void> {
   await embedder.dispose();
@@ -262,6 +270,15 @@ export async function processTrackFrame(
   const ch = Math.min(h, imgHeight - y);
   if (cw < MIN_CROP_PX || ch < MIN_CROP_PX) return empty;
 
+  // Phase 4 telemetry: time the whole per-frame pass and capture the single-frame
+  // top-k + maxSim that feed the fusion recipe, so a real device sweep emits the
+  // same per-frame record the inner-loop harness does. `telemetry()` is a no-op
+  // recorder unless a debug session is active, so this stays free in normal use.
+  const t0 = Date.now();
+  let singleFrameTop: FusedMatch[] = [];
+  let maxSim = 0;
+  let frameError: string | undefined;
+
   // 1. Embedding + retrieval + fusion (skipped gracefully if no model loaded).
   if (isEmbeddingReady()) {
     try {
@@ -270,12 +287,15 @@ export async function processTrackFrame(
         const emb = await embedder.embed(crop.rgba, crop.width, crop.height);
         if (emb) {
           // top-1 single-frame similarity = this frame's maxSim for the recipe.
-          const top1 = searchFn(emb, 1);
-          const maxSim = top1.length > 0 ? top1[0].score : 0;
+          // Pull top-K (not just top-1) so telemetry records the full per-frame
+          // ranking; updateTrack only needs the top-1 score (maxSim).
+          singleFrameTop = searchFn(emb, DEFAULT_FUSION_OPTS.topK);
+          maxSim = singleFrameTop.length > 0 ? singleFrameTop[0].score : 0;
           fusion.updateTrack(trackId, emb, maxSim);
         }
       }
     } catch (err) {
+      frameError = err instanceof Error ? err.message : String(err);
       console.warn('[liveScanEngine] embed/retrieval failed for', trackId, err);
     }
   }
@@ -303,6 +323,19 @@ export async function processTrackFrame(
   // 3. Fused retrieval + commit gate (no-op when no frames were folded in).
   const fused = fusion.fusedTopK(trackId, searchFn);
   const committed = fusion.isCommitted(trackId, searchFn);
+
+  // 4. Record this frame into telemetry (no-op when no session is active).
+  telemetry().recordFrame(trackId, {
+    top: singleFrameTop,
+    maxSim,
+    fused,
+    committed,
+    latencyMs: Date.now() - t0,
+    colorId: colorId || undefined,
+    colorName: colorName || undefined,
+    error: frameError,
+  });
+
   return {
     fusedPartNum: fused.length > 0 ? fused[0].partNum : '',
     fusedScore: fused.length > 0 ? fused[0].score : 0,
