@@ -12,7 +12,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Tuple, Optional
 import json
 
@@ -25,19 +25,6 @@ try:
     from tqdm import tqdm
 except ImportError:
     tqdm = None
-
-# LDraw color utilities — sRGB→Linear conversion + LDConfig.ldr parser
-try:
-    from ldraw_colors import load_colors as _load_ldraw_colors, ColorEntry
-    _LDRAW_COLORS_AVAILABLE = True
-except ImportError:
-    # Fallback if run from a different working directory
-    sys.path.insert(0, str(Path(__file__).parent))
-    try:
-        from ldraw_colors import load_colors as _load_ldraw_colors, ColorEntry
-        _LDRAW_COLORS_AVAILABLE = True
-    except ImportError:
-        _LDRAW_COLORS_AVAILABLE = False
 
 
 # ==============================================================================
@@ -68,103 +55,58 @@ def setup_logging(log_file: Path):
 
 
 # ==============================================================================
-# COLOR LOADING
+# COLOR PARSING
 # ==============================================================================
 
-def _srgb_to_linear(v: float) -> float:
-    """IEC 61966-2-1 sRGB → linear (used as fallback if ldraw_colors not available)."""
-    if v <= 0.04045:
-        return v / 12.92
-    return ((v + 0.055) / 1.055) ** 2.4
-
-
-def hex_to_rgb_linear(hex_color: str) -> Tuple[float, float, float]:
-    """
-    Convert hex color (e.g., '#05131D' or '05131D') → linear float RGB (0-1).
-
-    sRGB hex values from LDraw/Rebrickable must be gamma-corrected to linear
-    before passing to Blender's Principled BSDF — otherwise colours appear
-    washed-out (brights) or too dark (darks).
-    """
-    h = hex_color.lstrip('#')
-    if len(h) != 6:
+def hex_to_rgb_float(hex_color: str) -> Tuple[float, float, float]:
+    """Convert hex color (e.g., '05131D') to float RGB (0-1)"""
+    hex_color = hex_color.lstrip('#')
+    if len(hex_color) != 6:
         raise ValueError(f"Invalid hex color: {hex_color}")
-    r = _srgb_to_linear(int(h[0:2], 16) / 255.0)
-    g = _srgb_to_linear(int(h[2:4], 16) / 255.0)
-    b = _srgb_to_linear(int(h[4:6], 16) / 255.0)
+    r = int(hex_color[0:2], 16) / 255.0
+    g = int(hex_color[2:4], 16) / 255.0
+    b = int(hex_color[4:6], 16) / 255.0
     return (r, g, b)
-
-
-# Keep old name as alias for callers that import it directly
-hex_to_rgb_float = hex_to_rgb_linear
 
 
 # ==============================================================================
 # LOADING PARTS AND COLORS
 # ==============================================================================
 
-def load_colors(
-    ldconfig_path: Optional[Path] = None,
-    colors_csv: Optional[Path] = None,
-) -> dict:
-    """
-    Load LEGO colors as linear RGB, ready for Blender.
-
-    Priority:
-      1. LDConfig.ldr  — official LDraw color standard, most accurate
-      2. Rebrickable colors.csv  — fallback with same hex values, less metadata
-      3. Hardcoded 15-color minimal set  — last resort
-
-    Returns: {color_id: {'name': str, 'hex': str, 'rgb': (r_lin, g_lin, b_lin)}}
-    """
-    if _LDRAW_COLORS_AVAILABLE:
-        entries = _load_ldraw_colors(
-            ldconfig_path=ldconfig_path,
-            rebrickable_csv=colors_csv,
-        )
-        return {
-            code: {
-                'name': e.name,
-                'hex':  e.hex_srgb,
-                'rgb':  e.rgb_linear,   # ← proper linear values
-                'alpha': e.alpha,
-                'finish': e.finish,
-            }
-            for code, e in entries.items()
-        }
-
-    # Fallback: parse CSV with manual sRGB→linear conversion
-    if colors_csv and Path(colors_csv).exists():
-        colors = {}
+def load_colors_from_csv(colors_csv: Path) -> dict:
+    """Load Rebrickable colors.csv into a dict: color_id -> {name, rgb}"""
+    colors = {}
+    try:
         with open(colors_csv, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 color_id = int(row['id'])
                 colors[color_id] = {
                     'name': row['name'],
-                    'hex':  row['rgb'],
-                    'rgb':  hex_to_rgb_linear(row['rgb']),  # ← corrected
+                    'hex': row['rgb'],
+                    'rgb': hex_to_rgb_float(row['rgb'])
                 }
         return colors
-
-    raise RuntimeError(
-        "No color source available. Provide --ldconfig or --colors-csv."
-    )
-
-
-def load_colors_from_csv(colors_csv: Path) -> dict:
-    """Legacy wrapper — loads Rebrickable CSV with proper sRGB→linear conversion."""
-    return load_colors(colors_csv=colors_csv)
+    except Exception as e:
+        raise RuntimeError(f"Failed to load colors from {colors_csv}: {e}")
 
 
 def load_parts_subset(parts_file: Path, ldraw_parts_dir: Path) -> List[str]:
-    """Load part numbers from file, verify existence in LDraw library"""
+    """Load part numbers from file, one per line.
+
+    Accepts either a bare part number per line, or a whitespace/TAB-separated
+    line whose FIRST token is the part number (e.g. top_3000_parts.txt rows
+    like "3023\t8970"). Blank lines and '#' comments are skipped. Order is
+    preserved (the file is assumed pre-ranked by frequency).
+    """
     parts = []
     with open(parts_file, 'r') as f:
         for line in f:
-            part_num = line.strip()
-            if part_num and not part_num.startswith('#'):
-                parts.append(part_num)
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            part_num = line.split()[0]   # first token = part number
+            parts.append(part_num)
     return parts
 
 
@@ -205,9 +147,8 @@ def render_part(
     output_dir: Path,
     num_angles: int = 36,
     resolution: int = 224,
+    dr_strength: float = 1.0,
     index_csv: Optional[Path] = None,
-    domain_randomize: bool = False,
-    hdri_dir: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """
     Spawn a Blender process to render a single part+color combination.
@@ -217,6 +158,7 @@ def render_part(
         cmd = [
             blender_exe,
             "--background",
+            "--factory-startup",
             "--python", str(render_script),
             "--",
             "--part-file", str(part_file),
@@ -229,16 +171,11 @@ def render_part(
             "--color-name", str(color_name),
             "--num-angles", str(num_angles),
             "--resolution", str(resolution),
+            "--dr-strength", str(dr_strength),
         ]
 
         if index_csv:
             cmd.extend(["--index-csv", str(index_csv)])
-
-        if domain_randomize:
-            cmd.append("--domain-randomize")
-
-        if hdri_dir:
-            cmd.extend(["--hdri-dir", str(hdri_dir)])
 
         result = subprocess.run(
             cmd,
@@ -278,19 +215,9 @@ def main():
         help="Path to LDraw library root (default: ./ml/data/ldraw)"
     )
     parser.add_argument(
-        "--ldconfig",
-        default=None,
-        help=(
-            "Path to LDConfig.ldr for accurate LEGO color definitions "
-            "(default: <ldraw-dir>/LDConfig.ldr). "
-            "Downloaded automatically if missing. "
-            "Provides correct sRGB→linear values for Blender materials."
-        )
-    )
-    parser.add_argument(
         "--colors-csv",
         default="./ml/data/colors.csv",
-        help="Path to Rebrickable colors.csv (fallback if LDConfig.ldr not available)"
+        help="Path to Rebrickable colors.csv"
     )
     parser.add_argument(
         "--parts-file",
@@ -320,16 +247,23 @@ def main():
         help="Output image resolution (default: 224)"
     )
     parser.add_argument(
+        "--dr-strength",
+        type=float,
+        default=1.0,
+        help="Domain-randomization strength 0..1 passed to each render (default: 1.0)"
+    )
+    parser.add_argument(
         "--workers",
         type=int,
         default=4,
         help="Number of parallel Blender processes (default: 4)"
     )
     parser.add_argument(
-        "--max-parts",
+        "--max-parts", "--top",
         type=int,
         default=None,
-        help="Limit number of parts to render (for testing)"
+        dest="max_parts",
+        help="Limit to the first N parts from the (pre-ranked) parts file"
     )
     parser.add_argument(
         "--colors",
@@ -343,20 +277,6 @@ def main():
         action="store_true",
         help="Skip parts that already have rendered output"
     )
-    parser.add_argument(
-        "--domain-randomize",
-        action="store_true",
-        help="Enable domain randomization: varied lighting, HDRI backgrounds, material jitter. "
-             "Produces ~2x more images per part (6 elevations instead of 3). "
-             "Strongly recommended for real-world generalisation."
-    )
-    parser.add_argument(
-        "--hdri-dir",
-        type=str,
-        default=None,
-        help="Path to directory of .hdr/.exr environment maps for random backgrounds. "
-             "If not set, uses solid random colors. Free HDRIs: https://polyhaven.com/hdris"
-    )
 
     args = parser.parse_args()
 
@@ -366,12 +286,6 @@ def main():
     colors_csv = Path(args.colors_csv).resolve()
     output_dir = Path(args.output_dir).resolve()
     log_file = output_dir.parent / "failed_renders.log"
-
-    # LDConfig.ldr path: explicit arg > <ldraw_dir>/LDConfig.ldr > auto-download
-    if args.ldconfig:
-        ldconfig_path = Path(args.ldconfig).resolve()
-    else:
-        ldconfig_path = ldraw_dir / "LDConfig.ldr"
 
     render_script = Path(__file__).parent / "render_parts.py"
     if not render_script.exists():
@@ -387,22 +301,15 @@ def main():
     logger.info(f"Starting BrickScan batch render")
     logger.info(f"Blender: {blender_exe}")
     logger.info(f"LDraw dir: {ldraw_dir}")
-    logger.info(f"LDConfig: {ldconfig_path}")
     logger.info(f"Colors CSV: {colors_csv}")
     logger.info(f"Output dir: {output_dir}")
     logger.info(f"Workers: {args.workers}")
-    if args.domain_randomize:
-        logger.info(f"Domain randomization: ENABLED")
-        logger.info(f"HDRI dir: {args.hdri_dir or '(none — using solid colors)'}")
 
-    # Load colors — prefer LDConfig.ldr for accurate LinearRGB values
-    logger.info("Loading colors (LDConfig.ldr preferred for sRGB→linear accuracy)...")
+    # Load colors
+    logger.info("Loading colors...")
     try:
-        colors = load_colors(
-            ldconfig_path=ldconfig_path if ldconfig_path.exists() or True else None,
-            colors_csv=colors_csv if colors_csv.exists() else None,
-        )
-        logger.info(f"Loaded {len(colors)} colors with linear RGB values")
+        colors = load_colors_from_csv(colors_csv)
+        logger.info(f"Loaded {len(colors)} colors")
     except Exception as e:
         logger.error(f"Failed to load colors: {e}")
         sys.exit(1)
@@ -436,6 +343,7 @@ def main():
 
     # Build render tasks
     tasks = []
+    skipped_existing = 0
     for part_num in parts:
         part_file = find_ldraw_part_file(part_num, ldraw_dir)
         if not part_file:
@@ -443,11 +351,15 @@ def main():
             continue
 
         part_output_dir = output_dir / part_num
-        if args.skip_existing and part_output_dir.exists() and list(part_output_dir.glob("*.png")):
-            logger.info(f"Skipping {part_num} (already rendered)")
-            continue
 
         for color_id, color_info in colors.items():
+            # Resume granularity is per (part, color): each renders a set of
+            # {part_num}_{color_id}_*.png into the part dir. Skip only that
+            # (part, color) if its images already exist.
+            if args.skip_existing and part_output_dir.exists() and \
+                    list(part_output_dir.glob(f"{part_num}_{color_id}_*.png")):
+                skipped_existing += 1
+                continue
             r, g, b = color_info['rgb']
             tasks.append((
                 part_num,
@@ -459,6 +371,8 @@ def main():
             ))
 
     logger.info(f"Total tasks: {len(tasks)}")
+    if args.skip_existing and skipped_existing:
+        logger.info(f"Skipped {skipped_existing} already-rendered (part, color) combos")
 
     if not tasks:
         logger.warning("No tasks to render")
@@ -474,12 +388,11 @@ def main():
         task[0], task[1], task[2], task[3], task[4], task[5], task[6], task[7],
         num_angles=args.num_angles,
         resolution=args.resolution,
+        dr_strength=args.dr_strength,
         index_csv=index_csv,
-        domain_randomize=args.domain_randomize,
-        hdri_dir=args.hdri_dir,
     )
 
-    with ProcessPoolExecutor(max_workers=args.workers) as executor:
+    with ThreadPoolExecutor(max_workers=args.workers) as executor:
         futures = {executor.submit(render_fn, task): task for task in tasks}
 
         # Use tqdm if available

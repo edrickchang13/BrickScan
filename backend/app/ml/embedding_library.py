@@ -42,6 +42,10 @@ class EmbeddingLibrary:
     def __init__(self) -> None:
         self._embeddings: Dict[str, np.ndarray] = {}
         self._part_nums:  List[str] = []
+        # part_num -> how many confirmed exemplars have been merged into its
+        # prototype (used by add_exemplar's running-mean merge). Persisted in
+        # the cache so the running mean is correct across restarts.
+        self._exemplar_counts: Dict[str, int] = {}
         self._knn = None
         self._loaded: bool = False
         self._dirty: bool = False
@@ -71,6 +75,11 @@ class EmbeddingLibrary:
             with open(CACHE_PATH, "rb") as f:
                 data = pickle.load(f)
             self._embeddings = data.get("embeddings", {})
+            # Restore per-part exemplar counts (default 1 for legacy caches that
+            # predate the flywheel merge, so the next merge uses a sane weight).
+            self._exemplar_counts = data.get("exemplar_counts", {}) or {}
+            for p in self._embeddings:
+                self._exemplar_counts.setdefault(p, 1)
             logger.info("Loaded %d embeddings from cache", len(self._embeddings))
         except Exception as e:
             logger.error("Failed to load embeddings cache: %s", e)
@@ -130,13 +139,62 @@ class EmbeddingLibrary:
         self._embeddings[part_num] = embedding.astype(np.float32)
         self._dirty = True
 
+    def add_exemplar(
+        self, part_num: str, embedding: np.ndarray, *,
+        persist: bool = False, momentum: Optional[float] = None,
+    ) -> None:
+        """Fold a CONFIRMED exemplar into a part's prototype — flywheel ingest.
+
+        Unlike add_embedding (which overwrites), this MERGES the new exemplar
+        into the running per-part vector and re-normalises, so repeated
+        confirmations of the same part sharpen its prototype instead of being
+        lost. The index keeps exactly one vector per part_num (k-NN over part
+        prototypes), so the index never bloats no matter how many corrections
+        arrive.
+
+        merge rule:
+          - first exemplar for a part:      store it (normalised)
+          - subsequent exemplars:           v <- normalise((1-m)*v_old + m*v_new)
+            with m defaulting to a simple running mean (1/count) when `momentum`
+            is None, or a fixed EMA weight when given (favours recent crops).
+
+        The index is rebuilt lazily on the next search (sets _dirty). With
+        persist=True the cache is written so the exemplar survives a restart.
+        """
+        self._ensure_loaded()
+        new = embedding.astype(np.float32)
+        nn = np.linalg.norm(new)
+        if nn > 1e-8:
+            new = new / nn
+
+        old = self._embeddings.get(part_num)
+        if old is None:
+            merged = new
+            self._exemplar_counts[part_num] = 1
+        else:
+            cnt = self._exemplar_counts.get(part_num, 1)
+            m = (1.0 / (cnt + 1)) if momentum is None else float(momentum)
+            merged = (1.0 - m) * old + m * new
+            mn = np.linalg.norm(merged)
+            merged = merged / mn if mn > 1e-8 else merged
+            self._exemplar_counts[part_num] = cnt + 1
+
+        self._embeddings[part_num] = merged.astype(np.float32)
+        self._dirty = True
+        if persist:
+            self.save_cache()
+
     def save_cache(self) -> None:
         """Write embeddings dict to disk."""
         self._ensure_loaded()
         try:
             CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
             with open(CACHE_PATH, "wb") as f:
-                pickle.dump({"embeddings": self._embeddings}, f, protocol=4)
+                pickle.dump(
+                    {"embeddings": self._embeddings,
+                     "exemplar_counts": self._exemplar_counts},
+                    f, protocol=4,
+                )
             logger.info("Saved %d embeddings → %s", len(self._embeddings), CACHE_PATH)
         except Exception as e:
             logger.error("save_cache: %s", e)

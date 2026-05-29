@@ -203,6 +203,10 @@ def _query(emb_query: np.ndarray, top_k: int) -> Tuple[np.ndarray, np.ndarray]:
     """Return (similarity, row_indices) of top_k matches.
     Similarity is cosine in [-1, 1] (higher better)."""
     assert _EMBEDDINGS is not None
+    # add_entry() sets _INDEX = None to invalidate after a flywheel append; the
+    # first query after a burst of confirmations rebuilds it exactly once.
+    if _INDEX is None:
+        _query_lazy_rebuild()
     q = emb_query.astype(np.float32, copy=False).reshape(1, -1)
     n = _EMBEDDINGS.shape[0]
     k = min(top_k, n)
@@ -302,6 +306,111 @@ def search(
             if len(out) >= top_k:
                 break
     return out
+
+
+def add_entry(
+    embedding: np.ndarray,
+    part_num: str,
+    *,
+    color_id: Optional[int] = None,
+    part_name: str = "",
+    color_name: str = "",
+    color_hex: str = "",
+    element_id: str = "",
+    persist: bool = True,
+    path: Path = DEFAULT_CATALOG_PATH,
+) -> bool:
+    """Append ONE confirmed exemplar to the catalogue at runtime — the
+    active-learning flywheel hot path (see app/ml/flywheel_ingest.py).
+
+    The embedding is L2-normalised (the catalogue invariant) and stacked onto
+    _EMBEDDINGS; a CatalogEntry is appended; the ANN index is invalidated so the
+    next search() rebuilds it including this row. With `persist=True` the grown
+    catalogue is written back to `path` so the exemplar survives a restart.
+
+    This bootstraps an EMPTY catalogue too: if no pickle exists yet, the first
+    add_entry starts a fresh in-memory catalogue (and persists it when asked),
+    so the very first confirmed scan begins seeding visual search with no
+    offline precompute step.
+
+    Returns True on success. Never raises — returns False and logs on failure,
+    so a flywheel ingest can't break a scan.
+    """
+    global _LOADED, _ENTRIES, _EMBEDDINGS, _INDEX
+    try:
+        _load_catalog(path)
+        emb = np.asarray(embedding, dtype=np.float32).reshape(1, -1)
+        norm = float(np.linalg.norm(emb))
+        if norm > 1e-8:
+            emb = emb / norm
+        with _LOCK:
+            if _EMBEDDINGS is None:
+                _EMBEDDINGS = emb.copy()
+            else:
+                if emb.shape[1] != _EMBEDDINGS.shape[1]:
+                    logger.error(
+                        "visual_search.add_entry: dim mismatch catalogue=%d new=%d",
+                        _EMBEDDINGS.shape[1], emb.shape[1])
+                    return False
+                _EMBEDDINGS = np.vstack([_EMBEDDINGS, emb])
+            _ENTRIES.append(CatalogEntry(
+                element_id=element_id or f"flywheel_{len(_ENTRIES)}",
+                part_num=str(part_num),
+                color_id=color_id,
+                part_name=part_name,
+                color_name=color_name,
+                color_hex=color_hex,
+                row_index=len(_ENTRIES),
+            ))
+            # Invalidate the index — the next _query() rebuilds it (cheap at the
+            # <50K brute-force scale this catalogue runs at). We don't rebuild
+            # eagerly here so a burst of confirmations costs one rebuild, not N.
+            _INDEX = None
+        if persist:
+            _persist_catalog(path)
+        logger.info("visual_search.add_entry: %s/%s appended (catalogue size=%d)",
+                    part_num, color_id, _EMBEDDINGS.shape[0])
+        return True
+    except Exception as e:
+        logger.error("visual_search.add_entry failed: %s", e)
+        return False
+
+
+def _persist_catalog(path: Path = DEFAULT_CATALOG_PATH) -> None:
+    """Write the current in-memory catalogue back to its pickle (same schema as
+    precompute_catalog_embeddings.py). Called after add_entry(persist=True)."""
+    import datetime
+    if _EMBEDDINGS is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    blob = {
+        "embeddings": _EMBEDDINGS,
+        "entries": [
+            {
+                "element_id": e.element_id,
+                "part_num": e.part_num,
+                "color_id": e.color_id,
+                "part_name": e.part_name,
+                "color_name": e.color_name,
+                "color_hex": e.color_hex,
+            }
+            for e in _ENTRIES
+        ],
+        "model": "runtime_flywheel",
+        "dim": int(_EMBEDDINGS.shape[1]),
+        "built_at": datetime.datetime.utcnow().isoformat() + "Z",
+    }
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "wb") as f:
+        pickle.dump(blob, f, protocol=4)
+    os.replace(tmp, path)
+
+
+def _query_lazy_rebuild() -> None:
+    """Rebuild the ANN index if add_entry() invalidated it. Internal."""
+    global _INDEX
+    if _INDEX is None and _EMBEDDINGS is not None and _EMBEDDINGS.shape[0] > 0:
+        _INDEX = _build_index(_EMBEDDINGS)
 
 
 def reload_from_disk(path: Optional[Path] = None) -> None:

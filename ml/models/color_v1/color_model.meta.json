@@ -1,0 +1,262 @@
+{
+  "version": 1,
+  "method": "lda-knn (LDA metric + distance-weighted kNN over real train exemplars)",
+  "feature_dim": 12,
+  "lda_components": 12,
+  "gallery_size": 15918,
+  "num_colors": 60,
+  "knn_k": 3,
+  "prototypes": false,
+  "extraction": {
+    "img_size": 128,
+    "wb": true,
+    "wb_p": 6,
+    "border_frac": 0.1,
+    "fg_thresh": 0.14,
+    "hi_v": 0.93,
+    "hi_s": 0.12,
+    "lo_v": 0.04
+  },
+  "colors": {
+    "0": {
+      "name": "Black",
+      "hex": "05131D"
+    },
+    "1": {
+      "name": "Blue",
+      "hex": "0055BF"
+    },
+    "10": {
+      "name": "Bright Green",
+      "hex": "4B9F4A"
+    },
+    "1050": {
+      "name": "Coral",
+      "hex": "FF698F"
+    },
+    "1088": {
+      "name": "Medium Brown",
+      "hex": "755945"
+    },
+    "1089": {
+      "name": "Warm Tan",
+      "hex": "CCA373"
+    },
+    "1103": {
+      "name": "Pearl Titanium",
+      "hex": "3E3C39"
+    },
+    "1136": {
+      "name": "Reddish Orange",
+      "hex": "CA4C0B"
+    },
+    "135": {
+      "name": "Pearl Light Gray",
+      "hex": "9CA3A8"
+    },
+    "14": {
+      "name": "Yellow",
+      "hex": "F2CD37"
+    },
+    "15": {
+      "name": "White",
+      "hex": "FFFFFF"
+    },
+    "158": {
+      "name": "Yellowish Green",
+      "hex": "DFEEA5"
+    },
+    "179": {
+      "name": "Flat Silver",
+      "hex": "898788"
+    },
+    "182": {
+      "name": "Trans-Orange",
+      "hex": "F08F1C"
+    },
+    "19": {
+      "name": "Tan",
+      "hex": "E4CD9E"
+    },
+    "191": {
+      "name": "Bright Light Orange",
+      "hex": "F8BB3D"
+    },
+    "2": {
+      "name": "Green",
+      "hex": "237841"
+    },
+    "212": {
+      "name": "Bright Light Blue",
+      "hex": "9FC3E9"
+    },
+    "226": {
+      "name": "Bright Light Yellow",
+      "hex": "FFF03A"
+    },
+    "25": {
+      "name": "Orange",
+      "hex": "FE8A18"
+    },
+    "26": {
+      "name": "Magenta",
+      "hex": "923978"
+    },
+    "27": {
+      "name": "Lime",
+      "hex": "BBE90B"
+    },
+    "272": {
+      "name": "Dark Blue",
+      "hex": "0A3463"
+    },
+    "28": {
+      "name": "Dark Tan",
+      "hex": "958A73"
+    },
+    "288": {
+      "name": "Dark Green",
+      "hex": "184632"
+    },
+    "29": {
+      "name": "Bright Pink",
+      "hex": "E4ADC8"
+    },
+    "297": {
+      "name": "Pearl Gold",
+      "hex": "AA7F2E"
+    },
+    "3": {
+      "name": "Dark Turquoise",
+      "hex": "008F9B"
+    },
+    "30": {
+      "name": "Medium Lavender",
+      "hex": "AC78BA"
+    },
+    "308": {
+      "name": "Dark Brown",
+      "hex": "352100"
+    },
+    "31": {
+      "name": "Lavender",
+      "hex": "E1D5ED"
+    },
+    "320": {
+      "name": "Dark Red",
+      "hex": "720E0F"
+    },
+    "321": {
+      "name": "Dark Azure",
+      "hex": "078BC9"
+    },
+    "322": {
+      "name": "Medium Azure",
+      "hex": "36AEBF"
+    },
+    "323": {
+      "name": "Light Aqua",
+      "hex": "ADC3C0"
+    },
+    "326": {
+      "name": "Olive Green",
+      "hex": "9B9A5A"
+    },
+    "33": {
+      "name": "Trans-Dark Blue",
+      "hex": "0020A0"
+    },
+    "35": {
+      "name": "Trans-Bright Green",
+      "hex": "D9E4A7"
+    },
+    "36": {
+      "name": "Trans-Red",
+      "hex": "C91A09"
+    },
+    "378": {
+      "name": "Sand Green",
+      "hex": "A0BCAC"
+    },
+    "379": {
+      "name": "Sand Blue",
+      "hex": "6074A1"
+    },
+    "4": {
+      "name": "Red",
+      "hex": "C91A09"
+    },
+    "40": {
+      "name": "Trans-Brown",
+      "hex": "635F52"
+    },
+    "41": {
+      "name": "Trans-Light Blue",
+      "hex": "AEEFEC"
+    },
+    "42": {
+      "name": "Trans-Neon Green",
+      "hex": "F8F184"
+    },
+    "46": {
+      "name": "Trans-Yellow",
+      "hex": "F5CD2F"
+    },
+    "47": {
+      "name": "Trans-Clear",
+      "hex": "FCFCFC"
+    },
+    "484": {
+      "name": "Dark Orange",
+      "hex": "A95500"
+    },
+    "5": {
+      "name": "Dark Pink",
+      "hex": "C870A0"
+    },
+    "57": {
+      "name": "Trans-Neon Orange",
+      "hex": "FF800D"
+    },
+    "7": {
+      "name": "Light Gray",
+      "hex": "9BA19D"
+    },
+    "70": {
+      "name": "Reddish Brown",
+      "hex": "582A12"
+    },
+    "71": {
+      "name": "Light Bluish Gray",
+      "hex": "A0A5A9"
+    },
+    "72": {
+      "name": "Dark Bluish Gray",
+      "hex": "6C6E68"
+    },
+    "73": {
+      "name": "Medium Blue",
+      "hex": "5A93DB"
+    },
+    "78": {
+      "name": "Light Nougat",
+      "hex": "F6D7B3"
+    },
+    "8": {
+      "name": "Dark Gray",
+      "hex": "6D6E5C"
+    },
+    "84": {
+      "name": "Medium Nougat",
+      "hex": "AA7D55"
+    },
+    "85": {
+      "name": "Dark Purple",
+      "hex": "3F3691"
+    },
+    "92": {
+      "name": "Nougat",
+      "hex": "D09168"
+    }
+  }
+}

@@ -41,6 +41,14 @@ import { saveSession, loadSession, clearSession } from '@/utils/scanSession';
 import { useInventoryStore } from '@/store/inventoryStore';
 import { SETTINGS_KEYS, readBool } from '@/utils/settingsFlags';
 import { ensureDetectorLoaded, runOnDeviceScan } from '@/ml/scanPipeline';
+import {
+  ensureLiveScanLoaded,
+  processTrackFrame,
+  forgetTrack,
+  isTrackCounted,
+  markTrackCounted,
+  disposeLiveScanEngine,
+} from '@/ml/liveScanEngine';
 
 // Optional expo-haptics — no-ops gracefully if module isn't installed.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -103,11 +111,22 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
   highPerfRef.current = highPerfMode;
 
   const addItem = useInventoryStore((s) => s.addItem);
+  const removeItem = useInventoryStore((s) => s.removeItem);
 
   // Phase 5 stage 3 — refine on-device bboxes through the backend cascade
   const [refineWithBackend, setRefineWithBackend] = useState(false);
   const refineRef = useRef(false);
   refineRef.current = refineWithBackend;
+
+  // ── Phase 2 on-device ML (embedding retrieval + fusion + colour) ──────────
+  // Maps a committed track id → the inventory entry it created, so an async
+  // server verification can correct that exact row later. Refs (not state) —
+  // mutated from the frame loop, never drives render.
+  const trackInventoryIdRef = useRef<Map<string, string>>(new Map());
+  // Tracks currently being server-verified, so we fire the cascade at most once.
+  const verifyingTrackIdsRef = useRef<Set<string>>(new Set());
+  // Latest frame JPEG + its pixel dims, captured each frame for crop extraction.
+  const lastFrameRef = useRef<{ uri: string; width: number; height: number } | null>(null);
 
   // ── Phase 5 — read flags + optionally preload the on-device detector ─────
   useEffect(() => {
@@ -129,6 +148,16 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
         }
       }
     })();
+  }, []);
+
+  // ── Load the on-device live-scan ML engine (gallery index + student) ──────
+  // Best-effort: loads the synthetic-stub gallery today; the real student model
+  // + gallery drop in via configureLiveScanEngine() with no change here. Always
+  // runs (independent of on-device YOLO) so retrieval/colour can layer onto the
+  // backend-detected bboxes too. Disposed on unmount.
+  useEffect(() => {
+    void ensureLiveScanLoaded();
+    return () => { void disposeLiveScanEngine(); };
   }, []);
 
   // ── Permission ────────────────────────────────────────────────────────────
@@ -219,6 +248,12 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
       );
       if (manipulated.width && manipulated.height) {
         setSourceAR(manipulated.width / manipulated.height);
+        // Stash the frame for per-track crop extraction (Phase 2 ML below).
+        lastFrameRef.current = {
+          uri: manipulated.uri,
+          width: manipulated.width,
+          height: manipulated.height,
+        };
       }
       // Phase 5: on-device YOLO if enabled + model loaded, else backend.
       // Fall back transparently if on-device throws.
@@ -266,6 +301,14 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
             void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           }
         }
+        // GC fusion/commit state for tracks the tracker just dropped.
+        const survivingIds = new Set(next.map(t => t.id));
+        for (const t of prev) {
+          if (!survivingIds.has(t.id)) forgetTrack(t.id);
+        }
+        // Phase 2 — non-blocking per-track embedding/colour/fusion + commit.
+        // Runs off the captured frame; never blocks the next scan tick.
+        void processVisibleTracks(next, now);
         return next;
       });
     } catch (err: any) {
@@ -277,6 +320,146 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
       setIsInflight(false);
     }
   }, []);
+
+  // ── Phase 2 — per-track on-device identification + auto-inventory ─────────
+  // For each track seen THIS frame: crop → embedding retrieval + colour + fused
+  // top-k (liveScanEngine). When a track becomes committed (fused top-1 stable
+  // + margin), auto-add it to inventory exactly once. Tracker-locked but
+  // uncommitted/low-confidence tracks are sent for an async, non-blocking
+  // backend cascade verify that can correct the entry. Best-effort throughout.
+  const processVisibleTracks = useCallback(async (
+    currentTracks: BrickTrack[],
+    now: number,
+  ) => {
+    const frame = lastFrameRef.current;
+    if (!frame) return;
+
+    for (const track of currentTracks) {
+      // Only tracks actually re-detected this frame have a fresh crop region.
+      const seenThisFrame = now - track.lastSeenAt < FRAME_INTERVAL_MS;
+      if (!seenThisFrame) continue;
+
+      let result;
+      try {
+        result = await processTrackFrame(
+          track.id, track.bbox, frame.uri, frame.width, frame.height,
+        );
+      } catch {
+        continue; // never let one track's failure break the loop
+      }
+
+      // Commit → count once into inventory.
+      if (result.committed && !isTrackCounted(track.id)) {
+        markTrackCounted(track.id);
+        try {
+          const item = await addItem(
+            result.fusedPartNum,
+            result.colorId,
+            1,
+            result.colorName || track.colorName || '',
+            track.colorHex || '',
+          );
+          trackInventoryIdRef.current.set(track.id, item.id);
+        } catch {
+          // Add failed — allow a later frame to retry by un-marking.
+          // committedTrackIds is in the engine; clear our local id only.
+          trackInventoryIdRef.current.delete(track.id);
+        }
+        continue;
+      }
+
+      // Uncommitted but tracker-locked (a real piece on-device retrieval isn't
+      // confident about yet — common while the real student model is absent):
+      // verify through the backend cascade, async + at most once per track.
+      const lowConfidence = !result.committed && (result.fusedScore < 0.5);
+      if (
+        track.lockedAt !== null
+        && lowConfidence
+        && !isTrackCounted(track.id)
+        && !verifyingTrackIdsRef.current.has(track.id)
+      ) {
+        verifyingTrackIdsRef.current.add(track.id);
+        void verifyTrackWithBackend(track, frame, result.colorId, result.colorName);
+      }
+    }
+    // verifyTrackWithBackend is a stable useCallback; addItem drives commits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addItem]);
+
+  // Async backend-cascade verification for one track. Crops the bbox from the
+  // captured frame and runs it through apiClient.scanImage (Brickognize →
+  // Gemini → local cascade). If the server returns a confident part, the track
+  // is added to inventory once (server-corrected). If the track was already
+  // counted with a DIFFERENT part, the row is corrected (remove + re-add, since
+  // the store's updateItem only changes quantity). Fully best-effort.
+  const verifyTrackWithBackend = useCallback(async (
+    track: BrickTrack,
+    frame: { uri: string; width: number; height: number },
+    colorId: string,
+    colorName: string,
+  ) => {
+    try {
+      const [nx1, ny1, nx2, ny2] = track.bbox;
+      const x = Math.max(0, Math.round(nx1 * frame.width));
+      const y = Math.max(0, Math.round(ny1 * frame.height));
+      const w = Math.max(1, Math.round((nx2 - nx1) * frame.width));
+      const h = Math.max(1, Math.round((ny2 - ny1) * frame.height));
+      if (w < 24 || h < 24) return;
+
+      const cropped = await ImageManipulator.manipulateAsync(
+        frame.uri,
+        [{ crop: { originX: x, originY: y, width: w, height: h } }],
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true },
+      );
+      const b64 = cropped.base64;
+      if (!b64) return;
+
+      const res = await apiClient.scanImage(b64);
+      const top = res?.predictions?.[0];
+      if (!top?.partNum) return;
+
+      const existingId = trackInventoryIdRef.current.get(track.id);
+      if (existingId) {
+        // Already in inventory — correct the part if the server disagrees.
+        // updateItem is quantity-only, so a part change is remove + re-add.
+        const corrected = top.partNum;
+        // We can't read the old partNum cheaply here; re-add only when the
+        // server is confident enough to be worth the swap.
+        if ((top.confidence ?? 0) >= 0.6) {
+          try {
+            await removeItem(existingId);
+            const item = await addItem(
+              corrected,
+              top.colorId || colorId,
+              1,
+              top.colorName || colorName || track.colorName || '',
+              top.colorHex || track.colorHex || '',
+            );
+            trackInventoryIdRef.current.set(track.id, item.id);
+          } catch { /* leave the original entry as-is on failure */ }
+        }
+      } else if (!isTrackCounted(track.id)) {
+        // Not yet counted — adopt the server's identification as the entry.
+        markTrackCounted(track.id);
+        try {
+          const item = await addItem(
+            top.partNum,
+            top.colorId || colorId,
+            1,
+            top.colorName || colorName || track.colorName || '',
+            top.colorHex || track.colorHex || '',
+          );
+          trackInventoryIdRef.current.set(track.id, item.id);
+        } catch {
+          trackInventoryIdRef.current.delete(track.id);
+        }
+      }
+    } catch {
+      // Network / crop failure — silent; the track may be retried next session.
+    } finally {
+      verifyingTrackIdsRef.current.delete(track.id);
+    }
+  }, [addItem, removeItem]);
 
   // Adaptive throttle — if recent median latency indicates the device is
   // struggling (likely thermal), step the scan interval back. Speeds up

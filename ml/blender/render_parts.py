@@ -2,13 +2,6 @@
 """
 Blender GPU rendering script for LEGO part synthetic data generation.
 Runs INSIDE Blender: blender --background --python render_parts.py -- <args>
-
-Includes domain randomization for improved generalization:
-- Random HDRI backgrounds or solid colors
-- Per-angle lighting jitter (color temp, energy, azimuth)
-- Per-part material variation (roughness, specular, color noise)
-- Per-angle scale jitter
-- Extended elevation angles when domain randomization is enabled
 """
 
 import bpy
@@ -32,18 +25,13 @@ parser.add_argument("--color-b", type=float, required=True, help="Blue channel (
 parser.add_argument("--part-num", required=True, help="Part number string")
 parser.add_argument("--color-id", type=int, required=True, help="Color ID from Rebrickable")
 parser.add_argument("--color-name", required=True, help="Color name for logging")
-parser.add_argument("--num-angles", type=int, default=36, help="Number of camera angles (default: 36)")
+parser.add_argument("--num-angles", type=int, default=36, help="Number of azimuth angles per elevation (default: 36)")
 parser.add_argument("--resolution", type=int, default=224, help="Output resolution (default: 224)")
+parser.add_argument("--dr-strength", type=float, default=1.0, help="Domain-randomization strength 0..1 (default: 1.0)")
 parser.add_argument("--index-csv", default=None, help="Path to index.csv for appending rows")
-parser.add_argument("--domain-randomize", action="store_true", default=False, help="Enable domain randomization")
-parser.add_argument("--hdri-dir", type=str, default=None, help="Path to directory of .hdr/.exr files for backgrounds")
 args = parser.parse_args(argv)
 
 print(f"[BrickScan Renderer] Starting render for part {args.part_num}, color {args.color_name}")
-if args.domain_randomize:
-    print(f"[BrickScan Renderer] Domain randomization ENABLED")
-    if args.hdri_dir:
-        print(f"[BrickScan Renderer] HDRI dir: {args.hdri_dir}")
 
 # ==============================================================================
 # 1. SETUP SCENE
@@ -64,14 +52,13 @@ world.node_tree.nodes["Background"].inputs[0].default_value = (0.05, 0.05, 0.05,
 
 scene = bpy.context.scene
 scene.render.engine = "CYCLES"
-scene.cycles.device = "GPU"          # GPU rendering
 scene.cycles.samples = 128
-scene.cycles.denoiser = "OPENIMAGEDENOISE"
-scene.cycles.use_denoising = True
 
 # ── Cross-platform GPU setup ──────────────────────────────────────────────────
 # macOS Apple Silicon → Metal
 # Linux NVIDIA (GB10 Blackwell) → OptiX → CUDA fallback
+# Set BRICKSCAN_FORCE_CPU=1 to skip the GPU probe entirely (e.g. smoke tests, or
+# when the GPU is occupied by training). This avoids contending a busy GPU.
 import platform as _platform
 import sys as _sys
 
@@ -80,6 +67,7 @@ cycles_prefs = prefs.addons["cycles"].preferences
 
 _is_mac = _platform.system() == "Darwin"
 _is_linux = _platform.system() == "Linux"
+_force_cpu = os.environ.get("BRICKSCAN_FORCE_CPU", "").strip() not in ("", "0", "false", "False")
 
 # Pick device type priority based on platform
 if _is_mac:
@@ -90,24 +78,42 @@ else:
     _device_priority = ("CUDA", "OPTIX")
 
 _gpu_configured = False
-for _device_type in _device_priority:
-    try:
-        cycles_prefs.compute_device_type = _device_type
-        cycles_prefs.refresh_devices()
-        _enabled = [d for d in cycles_prefs.devices if d.type != "CPU"]
-        if _enabled:
-            for d in cycles_prefs.devices:
-                d.use = True   # enable all devices (CPU + GPU unified memory)
-            _gpu_configured = True
-            print(f"[BrickScan Renderer] ✓ GPU backend: {_device_type} "
-                  f"({len(_enabled)} device(s), platform: {_platform.system()})")
-            break
-    except Exception as _e:
-        print(f"[BrickScan Renderer] {_device_type} unavailable: {_e}")
+if _force_cpu:
+    print("[BrickScan Renderer] BRICKSCAN_FORCE_CPU set — using CPU rendering")
+else:
+    for _device_type in _device_priority:
+        try:
+            cycles_prefs.compute_device_type = _device_type
+            cycles_prefs.refresh_devices()
+            _enabled = [d for d in cycles_prefs.devices if d.type != "CPU"]
+            if _enabled:
+                for d in cycles_prefs.devices:
+                    d.use = True   # enable all devices (CPU + GPU unified memory)
+                _gpu_configured = True
+                print(f"[BrickScan Renderer] ✓ GPU backend: {_device_type} "
+                      f"({len(_enabled)} device(s), platform: {_platform.system()})")
+                break
+        except Exception as _e:
+            print(f"[BrickScan Renderer] {_device_type} unavailable: {_e}")
 
-if not _gpu_configured:
-    print("[BrickScan Renderer] ⚠ No GPU found — falling back to CPU rendering")
+if _gpu_configured:
+    scene.cycles.device = "GPU"
+else:
+    if not _force_cpu:
+        print("[BrickScan Renderer] ⚠ No GPU found — falling back to CPU rendering")
     scene.cycles.device = "CPU"
+
+# Denoiser: set after device config so the enum is populated. OpenImageDenoise
+# works on both CPU and GPU; fall back gracefully if unavailable.
+scene.cycles.use_denoising = True
+try:
+    scene.cycles.denoiser = "OPENIMAGEDENOISE"
+except (TypeError, AttributeError):
+    try:
+        scene.cycles.denoiser = "OPTIX" if scene.cycles.device == "GPU" else "OPENIMAGEDENOISE"
+    except (TypeError, AttributeError):
+        scene.cycles.use_denoising = False
+        print("[BrickScan Renderer] ⚠ Denoiser unavailable — rendering without denoise")
 
 # Output settings
 scene.render.resolution_x = args.resolution
@@ -116,7 +122,8 @@ scene.render.image_settings.file_format = "PNG"
 scene.render.image_settings.color_mode = "RGBA"
 scene.render.film_transparent = True
 
-print(f"[BrickScan Renderer] GPU rendering configured (samples: {scene.cycles.samples})")
+print(f"[BrickScan Renderer] Render configured: device={scene.cycles.device}, "
+      f"samples={scene.cycles.samples}, denoise={scene.cycles.use_denoising}")
 
 # ==============================================================================
 # 3. IMPORT LEGO PART FROM LDRAW (built-in parser — no add-on required)
@@ -286,7 +293,7 @@ except Exception as e:
 print(f"[BrickScan Renderer] Loaded part mesh: {imported_obj.name}")
 
 # ==============================================================================
-# 4. APPLY MATERIAL WITH DOMAIN RANDOMIZATION
+# 4. APPLY MATERIAL
 # ==============================================================================
 
 # Create or get material
@@ -299,31 +306,10 @@ else:
 mat.use_nodes = True
 mat.node_tree.nodes.clear()
 
-# Apply material variation if domain randomization is enabled
-base_color_r = args.color_r
-base_color_g = args.color_g
-base_color_b = args.color_b
-
-if args.domain_randomize:
-    # Add slight noise to base color (±0.03 per channel, clamped 0-1)
-    color_noise_r = random.uniform(-0.03, 0.03)
-    color_noise_g = random.uniform(-0.03, 0.03)
-    color_noise_b = random.uniform(-0.03, 0.03)
-    base_color_r = max(0.0, min(1.0, base_color_r + color_noise_r))
-    base_color_g = max(0.0, min(1.0, base_color_g + color_noise_g))
-    base_color_b = max(0.0, min(1.0, base_color_b + color_noise_b))
-
-    material_roughness = random.uniform(0.15, 0.50)
-    material_specular = random.uniform(0.3, 0.7)
-else:
-    material_roughness = 0.3
-    material_specular = 0.5
-
 # Create Principled BSDF with LEGO color
 bsdf = mat.node_tree.nodes.new("ShaderNodeBsdfPrincipled")
-bsdf.inputs["Base Color"].default_value = (base_color_r, base_color_g, base_color_b, 1.0)
-bsdf.inputs["Roughness"].default_value = material_roughness
-bsdf.inputs["Specular"].default_value = material_specular
+bsdf.inputs["Base Color"].default_value = (args.color_r, args.color_g, args.color_b, 1.0)
+bsdf.inputs["Roughness"].default_value = 0.3
 bsdf.inputs["Metallic"].default_value = 0.0
 
 output = mat.node_tree.nodes.new("ShaderNodeOutputMaterial")
@@ -335,82 +321,10 @@ if imported_obj.data.materials:
 else:
     imported_obj.data.materials.append(mat)
 
-print(f"[BrickScan Renderer] Applied color: RGB({base_color_r:.2f}, {base_color_g:.2f}, {base_color_b:.2f})")
-if args.domain_randomize:
-    print(f"[BrickScan Renderer] Material variation: roughness={material_roughness:.2f}, specular={material_specular:.2f}")
+print(f"[BrickScan Renderer] Applied color: RGB({args.color_r:.2f}, {args.color_g:.2f}, {args.color_b:.2f})")
 
 # ==============================================================================
-# 5. SETUP BACKGROUND WITH DOMAIN RANDOMIZATION
-# ==============================================================================
-
-def load_hdri_files(hdri_dir):
-    """Load list of .hdr and .exr files from directory."""
-    if not hdri_dir or not os.path.isdir(hdri_dir):
-        return []
-    hdri_files = []
-    for ext in ['*.hdr', '*.exr', '*.HDR', '*.EXR']:
-        hdri_files.extend(Path(hdri_dir).glob(ext))
-    return [str(f) for f in hdri_files]
-
-def hex_to_rgb(hex_color):
-    """Convert hex color string to RGB tuple (0-1)."""
-    hex_color = hex_color.lstrip('#')
-    r = int(hex_color[0:2], 16) / 255.0
-    g = int(hex_color[2:4], 16) / 255.0
-    b = int(hex_color[4:6], 16) / 255.0
-    return (r, g, b)
-
-background_hdri_file = None
-background_color = (0.05, 0.05, 0.05)
-background_strength = 1.0
-
-if args.domain_randomize:
-    # Try to load HDRI files if directory is provided
-    hdri_files = load_hdri_files(args.hdri_dir)
-
-    if hdri_files:
-        background_hdri_file = random.choice(hdri_files)
-        background_strength = random.uniform(0.3, 1.5)
-        print(f"[BrickScan Renderer] Using HDRI: {Path(background_hdri_file).name}, strength={background_strength:.2f}")
-    else:
-        # Use random solid background color
-        color_choices = ['#FFFFFF', '#E8E8E8', '#2A2A2A', '#1A3A5A', '#4A2020', '#F5F0E8']
-        background_color = hex_to_rgb(random.choice(color_choices))
-        background_strength = 1.0
-        print(f"[BrickScan Renderer] Using random solid background: RGB{background_color}")
-
-# Set up world environment
-bg_node = world.node_tree.nodes.get("Background")
-if bg_node is None:
-    bg_node = world.node_tree.nodes.new("ShaderNodeBackground")
-    world_output = world.node_tree.nodes.get("World Output")
-    if world_output:
-        world.node_tree.links.new(bg_node.outputs["Background"], world_output.inputs["Surface"])
-
-if background_hdri_file:
-    # Load HDRI texture
-    env_tex = world.node_tree.nodes.new("ShaderNodeTexEnvironment")
-    try:
-        env_tex.image = bpy.data.images.load(background_hdri_file)
-        world.node_tree.links.clear()
-        world.node_tree.links.new(env_tex.outputs["Color"], bg_node.inputs["Color"])
-        bg_node.inputs["Strength"].default_value = background_strength
-
-        # Apply random Z-rotation to HDRI
-        if len(world.node_tree.nodes) > 0:
-            hdri_rotation = random.uniform(0, 360)
-            # Note: rotation applied via mapping node (optional, for now just loaded)
-    except Exception as e:
-        print(f"[BrickScan Renderer] Failed to load HDRI {background_hdri_file}: {e}")
-else:
-    # Use solid background color
-    bg_node.inputs[0].default_value = (background_color[0], background_color[1], background_color[2], 1.0)
-    bg_node.inputs["Strength"].default_value = background_strength
-
-print("[BrickScan Renderer] Background setup complete")
-
-# ==============================================================================
-# 6. GET BOUNDING BOX AND CALCULATE CAMERA DISTANCE
+# 5. GET BOUNDING BOX AND CALCULATE CAMERA DISTANCE
 # ==============================================================================
 
 def get_object_dimensions(obj):
@@ -441,7 +355,7 @@ camera_distance = max_dim * 2.0  # Fit with some margin
 print(f"[BrickScan Renderer] Object dimensions: {dimensions}, camera distance: {camera_distance:.2f}")
 
 # ==============================================================================
-# 7. SETUP CAMERA
+# 6. SETUP CAMERA
 # ==============================================================================
 
 camera = bpy.data.cameras.new("Camera")
@@ -451,7 +365,7 @@ bpy.context.collection.objects.link(camera_obj)
 scene.camera = camera_obj
 
 # ==============================================================================
-# 8. SETUP LIGHTING (3-POINT)
+# 7. SETUP LIGHTING (3-POINT)
 # ==============================================================================
 
 def create_light(name, light_type, location, energy, color=(1, 1, 1)):
@@ -468,30 +382,35 @@ def create_light(name, light_type, location, energy, color=(1, 1, 1)):
 
     return light_obj
 
-# Store base light configuration for later jitter
+# Key light (warm, strong)
 key_light = create_light("KeyLight", "SUN", (3, 4, 5), 2.5, (1.0, 0.95, 0.8))
-fill_light = create_light("FillLight", "SUN", (-2, 1, 3), 1.0, (0.8, 0.9, 1.0))
-rim_light = create_light("RimLight", "SUN", (0, -2, 4), 1.5, (1.0, 1.0, 1.0))
 
-# Store base key light azimuth (radians)
-key_light_base_azimuth = math.atan2(4, 3)  # atan2(y, x) from location (3, 4, z)
+# Fill light (cool, soft)
+fill_light = create_light("FillLight", "SUN", (-2, 1, 3), 1.0, (0.8, 0.9, 1.0))
+
+# Rim light (white, back)
+rim_light = create_light("RimLight", "SUN", (0, -2, 4), 1.5, (1.0, 1.0, 1.0))
 
 print("[BrickScan Renderer] 3-point lighting setup complete")
 
 # ==============================================================================
-# 9. RENDER LOOP WITH MULTIPLE CAMERA ANGLES AND DOMAIN RANDOMIZATION
+# 8. RENDER LOOP WITH MULTIPLE CAMERA ANGLES
 # ==============================================================================
 
 output_dir = Path(args.output_dir)
 output_dir.mkdir(parents=True, exist_ok=True)
 
-# Use extended elevation angles if domain randomization is enabled
-if args.domain_randomize:
-    elevation_angles = [-30, -15, 0, 15, 30, 45]  # 6 elevations
-else:
-    elevation_angles = [-20, 10, 30]  # 3 elevations
-
+elevation_angles = [-20, 10, 30]  # degrees
 num_azimuths = args.num_angles
+
+# Domain-randomization strength (0 = none, 1 = default). Scales per-shot jitter
+# of lighting, camera distance, and background brightness. Deterministic per
+# (part, color) via a seeded RNG so reruns reproduce the same gallery views.
+dr = max(0.0, float(args.dr_strength))
+dr_rng = random.Random(hash((args.part_num, args.color_id)) & 0xFFFFFFFF)
+
+# Capture the base (key/fill/rim) light energies so we can jitter around them.
+_base_energies = {lo.name: lo.data.energy for lo in (key_light, fill_light, rim_light)}
 
 csv_path = args.index_csv
 if csv_path is None:
@@ -499,82 +418,22 @@ if csv_path is None:
 
 rendered_count = 0
 
-for elevation_deg in elevation_angles:
+for elev_idx, elevation_deg in enumerate(elevation_angles):
     elevation_rad = math.radians(elevation_deg)
 
     # Divide azimuths evenly across 360 degrees
     azimuths = [360 * i / num_azimuths for i in range(num_azimuths)]
 
-    for azimuth_deg in azimuths:
-        # Per-angle lighting jitter (if domain randomization enabled)
-        if args.domain_randomize:
-            # Jitter key light azimuth
-            jittered_key_azimuth = key_light_base_azimuth + math.radians(random.uniform(-40, 40))
-
-            # Jitter key light energy
-            key_energy = random.uniform(1.5, 4.0)
-
-            # Jitter key light color temperature (warm to cool)
-            color_temp_t = random.uniform(0, 1)
-            warm = (1.0, 0.90, 0.75)
-            cool = (0.80, 0.88, 1.0)
-            key_color = (
-                warm[0] + (cool[0] - warm[0]) * color_temp_t,
-                warm[1] + (cool[1] - warm[1]) * color_temp_t,
-                warm[2] + (cool[2] - warm[2]) * color_temp_t,
-            )
-
-            # Jitter fill light energy
-            fill_energy = random.uniform(0.3, 1.5)
-
-            # Jitter rim light energy
-            rim_energy = random.uniform(0.5, 2.5)
-
-            # Apply jittered lighting
-            key_light.data.energy = key_energy
-            key_light.data.color = key_color
-
-            # Update key light position based on jittered azimuth
-            key_distance = math.sqrt(3**2 + 4**2)  # preserve distance from base location
-            key_light.location = (
-                key_distance * math.cos(jittered_key_azimuth),
-                key_distance * math.sin(jittered_key_azimuth),
-                5
-            )
-
-            fill_light.data.energy = fill_energy
-            rim_light.data.energy = rim_energy
-        else:
-            # Fixed lighting (existing behavior)
-            key_light.data.energy = 2.5
-            key_light.data.color = (1.0, 0.95, 0.8)
-            key_light.location = (3, 4, 5)
-
-            fill_light.data.energy = 1.0
-            rim_light.data.energy = 1.5
-
-        # Optionally add accent light (10% probability per angle if domain randomization enabled)
-        accent_light = None
-        if args.domain_randomize and random.random() < 0.1:
-            accent_pos = (
-                random.uniform(-3, 3),
-                random.uniform(-3, 3),
-                random.uniform(2, 6)
-            )
-            accent_energy = random.uniform(0.5, 2.0)
-            accent_light = create_light("AccentLight", "AREA", accent_pos, accent_energy, (1.0, 1.0, 1.0))
-
-        # Per-angle scale jitter
-        if args.domain_randomize:
-            scale_jitter = random.uniform(0.92, 1.08)
-            imported_obj.scale = (scale_jitter, scale_jitter, scale_jitter)
-
+    for az_idx, azimuth_deg in enumerate(azimuths):
         azimuth_rad = math.radians(azimuth_deg)
 
+        # Per-shot camera-distance jitter (domain randomization)
+        dist = camera_distance * (1.0 + dr * dr_rng.uniform(-0.12, 0.12))
+
         # Calculate camera position (spherical coordinates)
-        cam_x = camera_distance * math.cos(elevation_rad) * math.cos(azimuth_rad)
-        cam_y = camera_distance * math.cos(elevation_rad) * math.sin(azimuth_rad)
-        cam_z = camera_distance * math.sin(elevation_rad)
+        cam_x = dist * math.cos(elevation_rad) * math.cos(azimuth_rad)
+        cam_y = dist * math.cos(elevation_rad) * math.sin(azimuth_rad)
+        cam_z = dist * math.sin(elevation_rad)
 
         camera_obj.location = (cam_x, cam_y, cam_z)
 
@@ -585,14 +444,17 @@ for elevation_deg in elevation_angles:
 
         bpy.context.view_layer.update()
 
-        # Vary background brightness slightly between shots (if not using HDRI)
-        if not background_hdri_file and not args.domain_randomize:
-            bg_node = world.node_tree.nodes.get("Background")
-            if bg_node:
-                bg_node.inputs["Strength"].default_value = random.uniform(0.8, 1.2)
+        # ── Domain randomization: background brightness + per-light jitter ──
+        bg_node = world.node_tree.nodes.get("Background")
+        if bg_node:
+            bg_node.inputs["Strength"].default_value = 1.0 + dr * dr_rng.uniform(-0.2, 0.4)
+        for _lo in (key_light, fill_light, rim_light):
+            base = _base_energies[_lo.name]
+            _lo.data.energy = base * (1.0 + dr * dr_rng.uniform(-0.3, 0.3))
 
-        # Filename with angle index
-        angle_idx = int(azimuth_deg / (360 / num_azimuths)) if num_azimuths > 0 else 0
+        # Filename: include elevation so the 3 elevations don't overwrite each
+        # other. angle_idx encodes elevation*num_azimuths + azimuth → unique.
+        angle_idx = elev_idx * num_azimuths + az_idx
         filename = f"{args.part_num}_{args.color_id}_{angle_idx:04d}.png"
         filepath = output_dir / filename
 
@@ -618,18 +480,10 @@ for elevation_deg in elevation_angles:
                     args.part_num,
                     args.color_id,
                     args.color_name,
-                    f"{base_color_r:.4f}",
-                    f"{base_color_g:.4f}",
-                    f"{base_color_b:.4f}"
+                    f"{args.color_r:.4f}",
+                    f"{args.color_g:.4f}",
+                    f"{args.color_b:.4f}"
                 ])
-
-        # Clean up accent light if created
-        if accent_light:
-            bpy.data.objects.remove(accent_light, do_unlink=True)
-
-        # Restore original scale if it was jittered
-        if args.domain_randomize:
-            imported_obj.scale = (1.0, 1.0, 1.0)
 
         rendered_count += 1
 

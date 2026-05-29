@@ -7,7 +7,7 @@ interface CameraRef {
 
 interface UseCameraReturn {
   hasPermission: boolean | null;
-  cameraRef: React.RefObject<CameraView>;
+  cameraRef: React.RefObject<CameraView | null>;
   takePicture: () => Promise<string>;
   requestPermission: () => Promise<void>;
   isLoading: boolean;

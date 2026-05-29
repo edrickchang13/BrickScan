@@ -58,11 +58,19 @@ export function generateWantedListXml(
   missingParts: MissingPart[],
   listName: string
 ): string {
+  const escapeXml = (s: string) =>
+    s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+
   const items = missingParts
     .map(
       (part) => `
     <Item>
-      <ItemID>${part.partNum}</ItemID>
+      <ItemID>${escapeXml(part.partNum)}</ItemID>
       <ItemTypeID>P</ItemTypeID>
       <ColorID>${getColorIdFromHex(part.colorHex)}</ColorID>
       <MaxPrice>0.0000</MaxPrice>
@@ -75,7 +83,7 @@ export function generateWantedListXml(
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <WantedList>
-  <WantedListName>${listName}</WantedListName>
+  <WantedListName>${escapeXml(listName)}</WantedListName>
   <Items>${items}
   </Items>
 </WantedList>`;
