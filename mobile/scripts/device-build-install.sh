@@ -143,7 +143,7 @@ say "installing onto device…"
 xcrun devicectl device install app --device "$DEVICE_UDID" "$APP_PATH"
 
 if [[ "$DO_LAUNCH" -eq 1 ]]; then
-  say "launching $BUNDLE_ID…"
+  say "launching ${BUNDLE_ID} ..."
   xcrun devicectl device process launch --device "$DEVICE_UDID" "$BUNDLE_ID" || \
     err "launch failed (the app is installed — open it from the home screen)."
 fi
