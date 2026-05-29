@@ -140,7 +140,7 @@ export const ContinuousScanScreen: React.FC<Props> = ({ navigation }) => {
   useEffect(() => {
     (async () => {
       const [onDev, hp, refine] = await Promise.all([
-        readBool(SETTINGS_KEYS.onDeviceDetect),
+        readBool(SETTINGS_KEYS.onDeviceDetect, true),
         readBool(SETTINGS_KEYS.highPerfMode),
         readBool(SETTINGS_KEYS.refineOnDeviceWithBackend),
       ]);
